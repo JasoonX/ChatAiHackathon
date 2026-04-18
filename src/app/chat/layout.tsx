@@ -25,7 +25,10 @@ import { z } from "zod";
 
 import { useActivityHeartbeat } from "@/hooks/use-activity";
 import { useSocket } from "@/hooks/use-socket";
+import { authClient } from "@/lib/auth-client";
 import type { InvitationPayload } from "@/lib/socket";
+import type { PresenceSnapshot, PresenceStatus } from "@/lib/socket";
+import { RoomManagementModal } from "@/components/room-management-modal";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -61,6 +64,8 @@ type MyRoom = {
   name: string;
   type: "public" | "private" | "direct";
   role: "member" | "admin";
+  ownerId?: string | null;
+  description?: string | null;
 };
 
 type PublicRoom = {
@@ -94,18 +99,6 @@ const PLACEHOLDER_CONTACTS: {
   { name: "Alice", presence: "online", unread: 0 },
   { name: "Bob", presence: "afk", unread: 0 },
   { name: "Carol", presence: "offline", unread: 2 },
-];
-
-const PLACEHOLDER_MEMBERS: {
-  name: string;
-  role: "owner" | "admin" | "member";
-  presence: Presence;
-}[] = [
-  { name: "Alice", role: "owner", presence: "online" },
-  { name: "Bob", role: "admin", presence: "online" },
-  { name: "Carol", role: "member", presence: "afk" },
-  { name: "Dave", role: "admin", presence: "online" },
-  { name: "Mike", role: "member", presence: "offline" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -983,39 +976,133 @@ function RoomsSidebar({ myRooms }: { myRooms: MyRoom[] }) {
 function ContextPanel({
   activeRoomId,
   myRooms,
+  socket,
 }: {
   activeRoomId: string | null;
   myRooms: MyRoom[];
+  socket: ReturnType<typeof useSocket>["socket"];
 }) {
+  const queryClient = useQueryClient();
   const activeRoom = myRooms.find((r) => r.id === activeRoomId);
+  const [presence, setPresence] = useState<PresenceSnapshot>({});
+  const { data: session } = authClient.useSession();
+
+  const { data: roomData, isLoading } = useQuery({
+    queryKey: ["room-management", activeRoomId],
+    queryFn: async () => {
+      const res = await fetch(`/api/rooms/${activeRoomId}`);
+      if (!res.ok) {
+        throw new Error("Failed to fetch room");
+      }
+      return res.json() as Promise<{
+        room: {
+          id: string;
+          name: string;
+          description: string | null;
+          type: "public" | "private" | "direct";
+          ownerId: string | null;
+          canManageMembers: boolean;
+          canDeleteRoom: boolean;
+        };
+        members: Array<{
+          userId: string;
+          username: string;
+          role: "member" | "admin";
+          isOwner: boolean;
+        }>;
+      }>;
+    },
+    enabled: !!activeRoomId,
+    staleTime: 0,
+  });
+
+  useEffect(() => {
+    if (!socket) {
+      return;
+    }
+
+    const handleSnapshot = (snapshot: PresenceSnapshot) => setPresence(snapshot);
+    const handleUpdate = ({
+      userId,
+      status,
+    }: {
+      userId: string;
+      status: PresenceStatus;
+    }) => {
+      setPresence((current) => ({ ...current, [userId]: status }));
+    };
+
+    socket.on("presence:snapshot", handleSnapshot);
+    socket.on("presence:update", handleUpdate);
+
+    return () => {
+      socket.off("presence:snapshot", handleSnapshot);
+      socket.off("presence:update", handleUpdate);
+    };
+  }, [socket]);
+
+  const activeMembers =
+    roomData?.members.map((member) => ({
+      name: member.username,
+      role: (member.isOwner ? "owner" : member.role) as
+        | "owner"
+        | "admin"
+        | "member",
+      presence: presence[member.userId] ?? "offline",
+    })) ?? [];
+
+  const canOpenManageRoom = Boolean(
+    activeRoomId &&
+      activeRoom?.type !== "direct" &&
+      (roomData?.room.canManageMembers || roomData?.room.canDeleteRoom),
+  );
 
   return (
     <aside className="hidden lg:flex w-[240px] shrink-0 flex-col border-l bg-card">
       <div className="p-4 space-y-1">
         <h3 className="text-sm font-semibold">Room info</h3>
         <p className="text-[12px] text-muted-foreground">
-          {activeRoom?.type === "private" ? "Private room" : "Public room"}
+          {roomData?.room.type === "private"
+            ? "Private room"
+            : roomData?.room.type === "direct"
+              ? "Direct message"
+              : "Public room"}
         </p>
+        {roomData?.room.description && (
+          <p className="text-[12px] text-muted-foreground">
+            {roomData.room.description}
+          </p>
+        )}
       </div>
 
       <Separator />
 
       <div className="px-4 pt-3 pb-1">
         <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-          Members ({PLACEHOLDER_MEMBERS.length})
+          Members ({activeMembers.length})
         </span>
       </div>
 
       <ScrollArea className="flex-1">
         <div className="py-1">
-          {PLACEHOLDER_MEMBERS.map((member) => (
-            <MemberItem
-              key={member.name}
-              name={member.name}
-              role={member.role}
-              presence={member.presence}
-            />
-          ))}
+          {!activeRoomId ? (
+            <p className="px-4 py-6 text-[12px] text-muted-foreground">
+              Select a room to see members
+            </p>
+          ) : isLoading ? (
+            <p className="px-4 py-6 text-[12px] text-muted-foreground">
+              Loading members…
+            </p>
+          ) : (
+            activeMembers.map((member) => (
+              <MemberItem
+                key={`${member.role}:${member.name}`}
+                name={member.name}
+                role={member.role}
+                presence={member.presence}
+              />
+            ))
+          )}
         </div>
       </ScrollArea>
 
@@ -1025,9 +1112,21 @@ function ContextPanel({
         {activeRoom?.type === "private" && activeRoomId && (
           <InviteUserDialog roomId={activeRoomId} />
         )}
-        <Button variant="ghost" size="sm" className="w-full text-[13px]">
-          Manage room
-        </Button>
+        {canOpenManageRoom && activeRoomId && (
+          <RoomManagementModal
+            roomId={activeRoomId}
+            onDeleted={() => {
+              if (session?.user?.id) {
+                void queryClient.invalidateQueries({ queryKey: ["my-rooms"] });
+              }
+            }}
+            trigger={
+              <Button variant="ghost" size="sm" className="w-full text-[13px]">
+                Manage room
+              </Button>
+            }
+          />
+        )}
       </div>
     </aside>
   );
@@ -1045,6 +1144,9 @@ export default function ChatLayout({
   const { socket } = useSocket();
   useActivityHeartbeat(socket);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const queryClient = useQueryClient();
+  const router = useRouter();
+  const { data: session } = authClient.useSession();
   const pathname = usePathname();
   const activeRoomId = pathname.startsWith("/chat/")
     ? pathname.split("/")[2]
@@ -1062,6 +1164,75 @@ export default function ChatLayout({
 
   const myRooms = myRoomsData?.rooms ?? [];
 
+  useEffect(() => {
+    if (!socket) {
+      return;
+    }
+
+    const refreshRoom = (roomId?: string) => {
+      void queryClient.invalidateQueries({ queryKey: ["my-rooms"] });
+      if (roomId) {
+        void queryClient.invalidateQueries({ queryKey: ["room-management", roomId] });
+        void queryClient.invalidateQueries({ queryKey: ["messages", roomId] });
+      }
+    };
+
+    const onMemberJoined = ({ roomId }: { roomId: string }) => refreshRoom(roomId);
+    const onMemberLeft = ({
+      roomId,
+      userId,
+    }: {
+      roomId: string;
+      userId: string;
+    }) => {
+      refreshRoom(roomId);
+      if (activeRoomId === roomId && session?.user?.id === userId) {
+        toast.error("You were removed from this room");
+        router.push("/chat");
+      }
+    };
+    const onAdminUpdated = ({ roomId }: { roomId: string }) => refreshRoom(roomId);
+    const onBanRemoved = ({ roomId }: { roomId: string }) => refreshRoom(roomId);
+    const onRoomUpdated = ({ roomId }: { roomId: string }) => refreshRoom(roomId);
+    const onRoomDeleted = ({ roomId }: { roomId: string }) => {
+      refreshRoom(roomId);
+      if (activeRoomId === roomId) {
+        router.push("/chat");
+      }
+    };
+    const onMemberBanned = ({
+      roomId,
+      userId,
+    }: {
+      roomId: string;
+      userId: string;
+    }) => {
+      refreshRoom(roomId);
+      if (activeRoomId === roomId && session?.user?.id === userId) {
+        toast.error("You were removed from this room");
+        router.push("/chat");
+      }
+    };
+
+    socket.on("room:member-joined", onMemberJoined);
+    socket.on("room:member-left", onMemberLeft);
+    socket.on("room:admin-updated", onAdminUpdated);
+    socket.on("room:ban-removed", onBanRemoved);
+    socket.on("room:updated", onRoomUpdated);
+    socket.on("room:deleted", onRoomDeleted);
+    socket.on("room:member-banned", onMemberBanned);
+
+    return () => {
+      socket.off("room:member-joined", onMemberJoined);
+      socket.off("room:member-left", onMemberLeft);
+      socket.off("room:admin-updated", onAdminUpdated);
+      socket.off("room:ban-removed", onBanRemoved);
+      socket.off("room:updated", onRoomUpdated);
+      socket.off("room:deleted", onRoomDeleted);
+      socket.off("room:member-banned", onMemberBanned);
+    };
+  }, [activeRoomId, queryClient, router, session?.user?.id, socket]);
+
   return (
     <div className="flex h-screen flex-col bg-background">
       <TopNav
@@ -1077,7 +1248,7 @@ export default function ChatLayout({
           {children}
         </main>
 
-        <ContextPanel activeRoomId={activeRoomId} myRooms={myRooms} />
+        <ContextPanel activeRoomId={activeRoomId} myRooms={myRooms} socket={socket} />
       </div>
     </div>
   );
