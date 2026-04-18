@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useDeferredValue, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Bell,
   ChevronDown,
   ChevronRight,
   Globe,
@@ -24,6 +25,7 @@ import { z } from "zod";
 
 import { useActivityHeartbeat } from "@/hooks/use-activity";
 import { useSocket } from "@/hooks/use-socket";
+import type { InvitationPayload } from "@/lib/socket";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -545,6 +547,256 @@ function BrowseRoomsDialog({ onJoined }: { onJoined: () => void }) {
 }
 
 // ---------------------------------------------------------------------------
+// Invitation types
+// ---------------------------------------------------------------------------
+
+type Invitation = {
+  id: string;
+  roomId: string;
+  roomName: string;
+  inviterUsername: string;
+  createdAt: string;
+};
+
+// ---------------------------------------------------------------------------
+// Invitation bell (top nav)
+// ---------------------------------------------------------------------------
+
+function InvitationBell({
+  socket,
+}: {
+  socket: ReturnType<typeof useSocket>["socket"];
+}) {
+  const [open, setOpen] = useState(false);
+  const queryClient = useQueryClient();
+  const router = useRouter();
+
+  const { data } = useQuery({
+    queryKey: ["invitations"],
+    queryFn: async () => {
+      const res = await fetch("/api/invitations");
+      if (!res.ok) throw new Error("Failed to fetch invitations");
+      return res.json() as Promise<{ invitations: Invitation[] }>;
+    },
+    staleTime: 30_000,
+  });
+
+  // Listen for real-time invitation events
+  useEffect(() => {
+    if (!socket) return;
+    const handler = (_payload: InvitationPayload) => {
+      void queryClient.invalidateQueries({ queryKey: ["invitations"] });
+    };
+    socket.on("invitation:received", handler);
+    return () => {
+      socket.off("invitation:received", handler);
+    };
+  }, [socket, queryClient]);
+
+  const invitations = data?.invitations ?? [];
+
+  const respond = useMutation({
+    mutationFn: async ({
+      invitationId,
+      action,
+    }: {
+      invitationId: string;
+      action: "accept" | "reject";
+    }) => {
+      const res = await fetch(`/api/invitations/${invitationId}/respond`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      if (!res.ok) {
+        const err = (await res.json()) as { error: string };
+        throw new Error(err.error ?? "Failed to respond");
+      }
+      return { invitationId, action };
+    },
+    onSuccess: ({ action }, { invitationId }) => {
+      void queryClient.invalidateQueries({ queryKey: ["invitations"] });
+      void queryClient.invalidateQueries({ queryKey: ["my-rooms"] });
+      if (action === "accept") {
+        const inv = invitations.find((i) => i.id === invitationId);
+        toast.success(`Joined ${inv?.roomName ?? "room"}!`);
+        if (inv) {
+          socket?.emit("room:subscribe", inv.roomId);
+          router.push(`/chat/${inv.roomId}`);
+        }
+        setOpen(false);
+      } else {
+        toast.success("Invitation declined");
+      }
+    },
+    onError: (err) => {
+      toast.error(err.message);
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="icon" className="relative h-8 w-8">
+          <Bell className="h-4 w-4" />
+          {invitations.length > 0 && (
+            <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-medium text-destructive-foreground">
+              {invitations.length}
+            </span>
+          )}
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Invitations</DialogTitle>
+        </DialogHeader>
+        <ScrollArea className="max-h-80">
+          {invitations.length === 0 ? (
+            <p className="py-8 text-center text-[13px] text-muted-foreground">
+              No pending invitations
+            </p>
+          ) : (
+            <div className="space-y-2 pr-2">
+              {invitations.map((inv) => (
+                <div
+                  key={inv.id}
+                  className="flex items-center gap-3 rounded-md border bg-card p-3"
+                >
+                  <Lock className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-medium truncate">
+                      {inv.roomName}
+                    </p>
+                    <p className="text-[12px] text-muted-foreground">
+                      Invited by {inv.inviterUsername}
+                    </p>
+                  </div>
+                  <div className="flex gap-1.5 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="default"
+                      className="text-[12px] h-7 px-2"
+                      disabled={respond.isPending}
+                      onClick={() =>
+                        respond.mutate({
+                          invitationId: inv.id,
+                          action: "accept",
+                        })
+                      }
+                    >
+                      Accept
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-[12px] h-7 px-2"
+                      disabled={respond.isPending}
+                      onClick={() =>
+                        respond.mutate({
+                          invitationId: inv.id,
+                          action: "reject",
+                        })
+                      }
+                    >
+                      Decline
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Invite user dialog (context panel for private rooms)
+// ---------------------------------------------------------------------------
+
+function InviteUserDialog({ roomId }: { roomId: string }) {
+  const [open, setOpen] = useState(false);
+  const [username, setUsername] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!username.trim()) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/rooms/${roomId}/invite`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: username.trim() }),
+      });
+      if (!res.ok) {
+        const err = (await res.json()) as { error: string };
+        setError(err.error ?? "Failed to invite");
+        return;
+      }
+      toast.success(`Invitation sent to ${username.trim()}`);
+      setUsername("");
+      setOpen(false);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="secondary" size="sm" className="w-full text-[13px]">
+          Invite user
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Invite User</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={onSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <label
+              htmlFor="invite-username"
+              className="text-[13px] font-medium"
+            >
+              Username
+            </label>
+            <Input
+              id="invite-username"
+              placeholder="Enter username…"
+              value={username}
+              onChange={(e) => {
+                setUsername(e.target.value);
+                setError(null);
+              }}
+            />
+            {error && (
+              <p className="text-[12px] text-destructive">{error}</p>
+            )}
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" size="sm" disabled={submitting || !username.trim()}>
+              {submitting ? "Sending…" : "Send Invite"}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Top nav
 // ---------------------------------------------------------------------------
 
@@ -558,9 +810,11 @@ const NAV_LINKS = [
 function TopNav({
   sidebarOpen,
   onToggleSidebar,
+  socket,
 }: {
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
+  socket: ReturnType<typeof useSocket>["socket"];
 }) {
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center border-b bg-background/80 backdrop-blur-[12px] px-4 gap-4">
@@ -582,6 +836,7 @@ function TopNav({
       </nav>
 
       <div className="ml-auto flex items-center gap-2">
+        <InvitationBell socket={socket} />
         <Button variant="ghost" size="sm" className="gap-1.5">
           <User className="h-4 w-4" />
           <span className="hidden sm:inline text-[13px]">Profile</span>
@@ -609,27 +864,15 @@ function TopNav({
 // Left sidebar
 // ---------------------------------------------------------------------------
 
-function RoomsSidebar() {
+function RoomsSidebar({ myRooms }: { myRooms: MyRoom[] }) {
   const queryClient = useQueryClient();
   const pathname = usePathname();
   const activeRoomId = pathname.startsWith("/chat/")
     ? pathname.split("/")[2]
     : null;
 
-  const { data: myRoomsData } = useQuery({
-    queryKey: ["my-rooms"],
-    queryFn: async () => {
-      const res = await fetch("/api/rooms/my");
-      if (!res.ok) throw new Error("Failed to fetch rooms");
-      return res.json() as Promise<{ rooms: MyRoom[] }>;
-    },
-    staleTime: 30_000,
-  });
-
-  const publicRooms =
-    myRoomsData?.rooms.filter((r) => r.type === "public") ?? [];
-  const privateRooms =
-    myRoomsData?.rooms.filter((r) => r.type === "private") ?? [];
+  const publicRooms = myRooms.filter((r) => r.type === "public");
+  const privateRooms = myRooms.filter((r) => r.type === "private");
 
   const invalidateRooms = () =>
     queryClient.invalidateQueries({ queryKey: ["my-rooms"] });
@@ -713,14 +956,21 @@ function RoomsSidebar() {
 // Right panel (room info + members)
 // ---------------------------------------------------------------------------
 
-function ContextPanel() {
+function ContextPanel({
+  activeRoomId,
+  myRooms,
+}: {
+  activeRoomId: string | null;
+  myRooms: MyRoom[];
+}) {
+  const activeRoom = myRooms.find((r) => r.id === activeRoomId);
+
   return (
     <aside className="hidden lg:flex w-[240px] shrink-0 flex-col border-l bg-card">
       <div className="p-4 space-y-1">
         <h3 className="text-sm font-semibold">Room info</h3>
-        <p className="text-[12px] text-muted-foreground">Public room</p>
         <p className="text-[12px] text-muted-foreground">
-          Owner: <span className="text-foreground">alice</span>
+          {activeRoom?.type === "private" ? "Private room" : "Public room"}
         </p>
       </div>
 
@@ -748,9 +998,9 @@ function ContextPanel() {
       <Separator />
 
       <div className="p-3 space-y-2">
-        <Button variant="secondary" size="sm" className="w-full text-[13px]">
-          Invite user
-        </Button>
+        {activeRoom?.type === "private" && activeRoomId && (
+          <InviteUserDialog roomId={activeRoomId} />
+        )}
         <Button variant="ghost" size="sm" className="w-full text-[13px]">
           Manage room
         </Button>
@@ -771,22 +1021,39 @@ export default function ChatLayout({
   const { socket } = useSocket();
   useActivityHeartbeat(socket);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const pathname = usePathname();
+  const activeRoomId = pathname.startsWith("/chat/")
+    ? pathname.split("/")[2]
+    : null;
+
+  const { data: myRoomsData } = useQuery({
+    queryKey: ["my-rooms"],
+    queryFn: async () => {
+      const res = await fetch("/api/rooms/my");
+      if (!res.ok) throw new Error("Failed to fetch rooms");
+      return res.json() as Promise<{ rooms: MyRoom[] }>;
+    },
+    staleTime: 30_000,
+  });
+
+  const myRooms = myRoomsData?.rooms ?? [];
 
   return (
     <div className="flex h-screen flex-col bg-background">
       <TopNav
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+        socket={socket}
       />
 
       <div className="flex flex-1 overflow-hidden">
-        {sidebarOpen && <RoomsSidebar />}
+        {sidebarOpen && <RoomsSidebar myRooms={myRooms} />}
 
         <main className="flex flex-1 flex-col overflow-hidden">
           {children}
         </main>
 
-        <ContextPanel />
+        <ContextPanel activeRoomId={activeRoomId} myRooms={myRooms} />
       </div>
     </div>
   );

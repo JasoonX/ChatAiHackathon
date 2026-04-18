@@ -31,6 +31,14 @@ export type PresenceUpdate = {
 
 export type PresenceSnapshot = Record<string, PresenceStatus>;
 
+export type InvitationPayload = {
+  id: string;
+  roomId: string;
+  roomName: string;
+  inviterUsername: string;
+  createdAt: string;
+};
+
 export type ServerToClientEvents = {
   hello: (payload: { message: string }) => void;
   "room:member-joined": (payload: {
@@ -45,6 +53,7 @@ export type ServerToClientEvents = {
   "message:new": (payload: MessagePayload) => void;
   "message:updated": (payload: MessagePayload) => void;
   "message:deleted": (payload: { id: string; roomId: string; deletedAt: string }) => void;
+  "invitation:received": (payload: InvitationPayload) => void;
   "presence:update": (payload: PresenceUpdate) => void;
   "presence:snapshot": (payload: PresenceSnapshot) => void;
 };
