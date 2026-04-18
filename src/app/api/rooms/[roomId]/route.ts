@@ -11,6 +11,7 @@ import {
   getRoomManagementSnapshot,
   getRoomPermissionContext,
 } from "@/server/room-management";
+import { deleteRoom } from "@/server/room-deletion";
 
 const updateRoomSchema = z.object({
   name: z.string().trim().min(1, "Room name is required"),
@@ -131,6 +132,8 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
     return NextResponse.json({ error: "Only the owner can delete the room" }, { status: 403 });
   }
 
+  // Notify connected sockets before touching the DB so they can react
+  // while the room still exists in socket.io channel state.
   const io = getIO();
   io?.to(roomId).emit("room:deleted", { roomId });
   if (io) {
@@ -138,7 +141,7 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
     await Promise.all(sockets.map((socket) => socket.leave(roomId)));
   }
 
-  await db.delete(rooms).where(eq(rooms.id, roomId));
+  await deleteRoom(roomId);
 
   return NextResponse.json({ success: true });
 }

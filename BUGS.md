@@ -10,3 +10,4 @@
 - No dedicated friend management screen
 - DM read-only enforcement needs end-to-end manual verification
 - when I remove a friend, it's not shown on their side until the page refresh and no alert shown (need to check the spec)
+- the invite icon (UserPlus) appears on each private room row on hover, but changes it's position depending on unread messages, need to stabilize the position
