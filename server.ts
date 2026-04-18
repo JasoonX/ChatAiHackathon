@@ -4,7 +4,11 @@ import { parse } from "node:url";
 import next from "next";
 import { Server as SocketIOServer } from "socket.io";
 
+import { db } from "./src/db";
+import { roomMembers } from "./src/db/schema/rooms";
 import { socketAuthMiddleware } from "./src/lib/socket-auth";
+import { setIO } from "./src/lib/socket-server";
+import { eq } from "drizzle-orm";
 
 const dev = process.env.NODE_ENV !== "production";
 const port = Number.parseInt(process.env.PORT ?? "3000", 10);
@@ -33,9 +37,21 @@ async function bootstrap() {
 
   io.use(socketAuthMiddleware);
 
-  io.on("connection", (socket) => {
+  setIO(io);
+
+  io.on("connection", async (socket) => {
     const { userId, username } = socket.data;
     console.log(`User connected: ${userId} (${username})`);
+
+    // Auto-join socket.io rooms for all rooms the user is a member of
+    const memberships = await db
+      .select({ roomId: roomMembers.roomId })
+      .from(roomMembers)
+      .where(eq(roomMembers.userId, userId));
+
+    for (const { roomId } of memberships) {
+      await socket.join(roomId);
+    }
 
     socket.on("disconnect", () => {
       console.log(`User disconnected: ${userId} (${username})`);

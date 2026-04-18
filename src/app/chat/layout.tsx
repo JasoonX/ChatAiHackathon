@@ -1,10 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useDeferredValue, useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronDown,
   ChevronRight,
+  Globe,
   Hash,
   Lock,
   MessageSquare,
@@ -14,32 +19,68 @@ import {
   Search,
   User,
 } from "lucide-react";
+import { toast } from "sonner";
+import { z } from "zod";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { LogoutButton } from "@/components/logout-button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
 
 // ---------------------------------------------------------------------------
-// Placeholder data
+// Types
 // ---------------------------------------------------------------------------
 
 type Presence = "online" | "afk" | "offline";
 
-const PLACEHOLDER_ROOMS = {
-  public: [
-    { name: "general", unread: 3 },
-    { name: "engineering", unread: 0 },
-    { name: "random", unread: 0 },
-  ],
-  private: [
-    { name: "core-team", unread: 1 },
-    { name: "ops", unread: 0 },
-  ],
+type MyRoom = {
+  id: string;
+  name: string;
+  type: "public" | "private" | "direct";
+  role: "member" | "admin";
 };
+
+type PublicRoom = {
+  id: string;
+  name: string;
+  description: string | null;
+  memberCount: number;
+};
+
+// ---------------------------------------------------------------------------
+// Schemas
+// ---------------------------------------------------------------------------
+
+const createRoomSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  description: z.string().optional(),
+  type: z.enum(["public", "private"]),
+});
+
+type CreateRoomForm = z.infer<typeof createRoomSchema>;
+
+// ---------------------------------------------------------------------------
+// Placeholder data (contacts + members — not yet wired)
+// ---------------------------------------------------------------------------
 
 const PLACEHOLDER_CONTACTS: {
   name: string;
@@ -89,28 +130,33 @@ function PresenceDot({ status }: { status: Presence }) {
 function SidebarSection({
   title,
   defaultOpen = true,
+  action,
   children,
 }: {
   title: string;
   defaultOpen?: boolean;
+  action?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
 
   return (
     <div>
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="flex w-full items-center gap-1 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground hover:text-foreground transition-colors"
-      >
-        {open ? (
-          <ChevronDown className="h-3 w-3" />
-        ) : (
-          <ChevronRight className="h-3 w-3" />
-        )}
-        {title}
-      </button>
+      <div className="flex items-center gap-1 px-3 py-1.5">
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          className="flex flex-1 items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {open ? (
+            <ChevronDown className="h-3 w-3" />
+          ) : (
+            <ChevronRight className="h-3 w-3" />
+          )}
+          {title}
+        </button>
+        {action}
+      </div>
       {open && <div className="space-y-0.5 px-1">{children}</div>}
     </div>
   );
@@ -121,17 +167,19 @@ function SidebarSection({
 // ---------------------------------------------------------------------------
 
 function RoomItem({
+  id,
   name,
   isPrivate,
-  unread,
+  unread = 0,
 }: {
+  id: string;
   name: string;
   isPrivate?: boolean;
-  unread: number;
+  unread?: number;
 }) {
   return (
-    <button
-      type="button"
+    <Link
+      href={`/chat/${id}`}
       className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
     >
       {isPrivate ? (
@@ -145,7 +193,7 @@ function RoomItem({
           {unread}
         </Badge>
       )}
-    </button>
+    </Link>
   );
 }
 
@@ -217,6 +265,278 @@ function MemberItem({
 }
 
 // ---------------------------------------------------------------------------
+// Create Room Dialog
+// ---------------------------------------------------------------------------
+
+function CreateRoomDialog({ onSuccess }: { onSuccess: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const form = useForm<CreateRoomForm>({
+    resolver: zodResolver(createRoomSchema),
+    defaultValues: { name: "", description: "", type: "public" },
+  });
+
+  const onSubmit = async (data: CreateRoomForm) => {
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/rooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+
+      if (!res.ok) {
+        const err = (await res.json()) as { error: unknown };
+        if (res.status === 409) {
+          form.setError("name", { message: "Room name already taken" });
+          return;
+        }
+        toast.error(
+          typeof err.error === "string" ? err.error : "Failed to create room",
+        );
+        return;
+      }
+
+      toast.success("Room created!");
+      form.reset();
+      setOpen(false);
+      onSuccess();
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="secondary" size="sm" className="w-full gap-1.5">
+          <Plus className="h-3.5 w-3.5" />
+          Create room
+        </Button>
+      </DialogTrigger>
+
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Create Room</DialogTitle>
+        </DialogHeader>
+
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Name</FormLabel>
+                  <FormControl>
+                    <Input placeholder="e.g. general" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="description"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Description</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="Optional description"
+                      className="resize-none"
+                      rows={2}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="type"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Type</FormLabel>
+                  <FormControl>
+                    <div className="flex gap-4">
+                      {(["public", "private"] as const).map((t) => (
+                        <label
+                          key={t}
+                          className="flex items-center gap-2 cursor-pointer text-[13px]"
+                        >
+                          <input
+                            type="radio"
+                            value={t}
+                            checked={field.value === t}
+                            onChange={() => field.onChange(t)}
+                            className="accent-primary"
+                          />
+                          {t === "public" ? (
+                            <span className="flex items-center gap-1">
+                              <Globe className="h-3.5 w-3.5" /> Public
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1">
+                              <Lock className="h-3.5 w-3.5" /> Private
+                            </span>
+                          )}
+                        </label>
+                      ))}
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" size="sm" disabled={submitting}>
+                {submitting ? "Creating…" : "Create"}
+              </Button>
+            </div>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Browse Public Rooms Dialog
+// ---------------------------------------------------------------------------
+
+function BrowseRoomsDialog({ onJoined }: { onJoined: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search);
+  const queryClient = useQueryClient();
+  const router = useRouter();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["public-rooms", deferredSearch],
+    queryFn: async () => {
+      const params = new URLSearchParams({ limit: "30" });
+      if (deferredSearch) params.set("search", deferredSearch);
+      const res = await fetch(`/api/rooms/public?${params.toString()}`);
+      if (!res.ok) throw new Error("Failed to fetch rooms");
+      return res.json() as Promise<{
+        rooms: PublicRoom[];
+        nextCursor: string | null;
+      }>;
+    },
+    enabled: open,
+    staleTime: 10_000,
+  });
+
+  const [joiningId, setJoiningId] = useState<string | null>(null);
+
+  const join = async (roomId: string) => {
+    setJoiningId(roomId);
+    try {
+      const res = await fetch(`/api/rooms/${roomId}/join`, { method: "POST" });
+      if (!res.ok) {
+        const err = (await res.json()) as { error: string };
+        toast.error(err.error ?? "Failed to join room");
+        return;
+      }
+      await queryClient.invalidateQueries({ queryKey: ["my-rooms"] });
+      toast.success("Joined!");
+      setOpen(false);
+      onJoined();
+      router.push(`/chat/${roomId}`);
+    } finally {
+      setJoiningId(null);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <button
+          type="button"
+          className="rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors"
+          title="Browse public rooms"
+        >
+          <Globe className="h-3 w-3" />
+        </button>
+      </DialogTrigger>
+
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Public Rooms</DialogTitle>
+        </DialogHeader>
+
+        <div className="relative mb-3">
+          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search rooms…"
+            className="h-8 pl-8 text-[13px]"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+
+        <ScrollArea className="h-80">
+          {isLoading && (
+            <p className="py-8 text-center text-[13px] text-muted-foreground">
+              Loading…
+            </p>
+          )}
+          {!isLoading && data?.rooms.length === 0 && (
+            <p className="py-8 text-center text-[13px] text-muted-foreground">
+              No rooms found
+            </p>
+          )}
+          <div className="space-y-2 pr-2">
+            {data?.rooms.map((room) => (
+              <div
+                key={room.id}
+                className="flex items-center gap-3 rounded-md border bg-card p-3"
+              >
+                <Hash className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-medium truncate">{room.name}</p>
+                  {room.description && (
+                    <p className="text-[12px] text-muted-foreground truncate">
+                      {room.description}
+                    </p>
+                  )}
+                  <p className="text-[11px] text-muted-foreground">
+                    {room.memberCount} member{room.memberCount !== 1 ? "s" : ""}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="text-[12px] shrink-0"
+                  disabled={joiningId === room.id}
+                  onClick={() => join(room.id)}
+                >
+                  {joiningId === room.id ? "Joining…" : "Join"}
+                </Button>
+              </div>
+            ))}
+          </div>
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Top nav
 // ---------------------------------------------------------------------------
 
@@ -278,19 +598,36 @@ function TopNav({
 }
 
 // ---------------------------------------------------------------------------
-// Right sidebar (rooms + contacts)
+// Left sidebar
 // ---------------------------------------------------------------------------
 
 function RoomsSidebar() {
+  const queryClient = useQueryClient();
+
+  const { data: myRoomsData } = useQuery({
+    queryKey: ["my-rooms"],
+    queryFn: async () => {
+      const res = await fetch("/api/rooms/my");
+      if (!res.ok) throw new Error("Failed to fetch rooms");
+      return res.json() as Promise<{ rooms: MyRoom[] }>;
+    },
+    staleTime: 30_000,
+  });
+
+  const publicRooms =
+    myRoomsData?.rooms.filter((r) => r.type === "public") ?? [];
+  const privateRooms =
+    myRoomsData?.rooms.filter((r) => r.type === "private") ?? [];
+
+  const invalidateRooms = () =>
+    queryClient.invalidateQueries({ queryKey: ["my-rooms"] });
+
   return (
     <aside className="flex w-[260px] shrink-0 flex-col border-r bg-card">
       <div className="p-3">
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search..."
-            className="h-8 pl-8 text-[13px]"
-          />
+          <Input placeholder="Search…" className="h-8 pl-8 text-[13px]" />
         </div>
       </div>
 
@@ -298,21 +635,36 @@ function RoomsSidebar() {
 
       <ScrollArea className="flex-1">
         <div className="py-2 space-y-3">
-          <SidebarSection title="Public Rooms">
-            {PLACEHOLDER_ROOMS.public.map((room) => (
-              <RoomItem key={room.name} name={room.name} unread={room.unread} />
-            ))}
+          <SidebarSection
+            title="Public Rooms"
+            action={<BrowseRoomsDialog onJoined={invalidateRooms} />}
+          >
+            {publicRooms.length === 0 ? (
+              <p className="px-2 py-1 text-[12px] text-muted-foreground">
+                No rooms yet
+              </p>
+            ) : (
+              publicRooms.map((room) => (
+                <RoomItem key={room.id} id={room.id} name={room.name} />
+              ))
+            )}
           </SidebarSection>
 
           <SidebarSection title="Private Rooms">
-            {PLACEHOLDER_ROOMS.private.map((room) => (
-              <RoomItem
-                key={room.name}
-                name={room.name}
-                isPrivate
-                unread={room.unread}
-              />
-            ))}
+            {privateRooms.length === 0 ? (
+              <p className="px-2 py-1 text-[12px] text-muted-foreground">
+                No rooms yet
+              </p>
+            ) : (
+              privateRooms.map((room) => (
+                <RoomItem
+                  key={room.id}
+                  id={room.id}
+                  name={room.name}
+                  isPrivate
+                />
+              ))
+            )}
           </SidebarSection>
 
           <Separator className="mx-3" />
@@ -333,10 +685,7 @@ function RoomsSidebar() {
       <Separator />
 
       <div className="p-3">
-        <Button variant="secondary" size="sm" className="w-full gap-1.5">
-          <Plus className="h-3.5 w-3.5" />
-          Create room
-        </Button>
+        <CreateRoomDialog onSuccess={invalidateRooms} />
       </div>
     </aside>
   );
