@@ -12,6 +12,14 @@ import { socketAuthMiddleware } from "./src/lib/socket-auth";
 import { setIO } from "./src/lib/socket-server";
 import { canUserPostInRoom } from "./src/lib/permissions";
 import type { MessagePayload } from "./src/lib/socket";
+import {
+  addSocket,
+  removeSocket,
+  recordHeartbeat,
+  getSnapshot,
+  startPresenceSweep,
+  stopPresenceSweep,
+} from "./src/server/presence";
 import { and, eq } from "drizzle-orm";
 
 const dev = process.env.NODE_ENV !== "production";
@@ -42,10 +50,17 @@ async function bootstrap() {
   io.use(socketAuthMiddleware);
 
   setIO(io);
+  startPresenceSweep(io);
 
   io.on("connection", (socket) => {
     const { userId, username } = socket.data;
     console.log(`User connected: ${userId} (${username})`);
+
+    // Presence: track this socket
+    addSocket(userId, socket.id);
+
+    // Send current presence snapshot to newly connected client
+    socket.emit("presence:snapshot", getSnapshot());
 
     // Auto-join: run async but don't block handler registration.
     // Handlers MUST be registered synchronously so buffered client events
@@ -61,7 +76,7 @@ async function bootstrap() {
     socket.on(
       "message:send",
       async (
-        { roomId, content }: { roomId: string; content: string },
+        { roomId, content, replyToMessageId }: { roomId: string; content: string; replyToMessageId?: string },
         callback: (response: { error?: string; message?: MessagePayload }) => void,
       ) => {
         // 1. Validate content
@@ -105,11 +120,16 @@ async function bootstrap() {
         // 4. Insert message
         const [message] = await db
           .insert(messages)
-          .values({ roomId, senderUserId: userId, body: content })
+          .values({
+            roomId,
+            senderUserId: userId,
+            body: content,
+            replyToMessageId: replyToMessageId ?? null,
+          })
           .returning();
 
-        // 5. Fetch sender
-        const [sender] = await db
+        // 5. Fetch sender + reply-to data in parallel
+        const senderPromise = db
           .select({
             id: users.id,
             username: users.username,
@@ -120,12 +140,66 @@ async function bootstrap() {
           .where(eq(users.id, userId))
           .limit(1);
 
+        let replyTo: MessagePayload["replyTo"] = null;
+
+        if (message.replyToMessageId) {
+          const replyPromise = db
+            .select({
+              id: messages.id,
+              body: messages.body,
+              deletedAt: messages.deletedAt,
+              senderUsername: users.username,
+            })
+            .from(messages)
+            .innerJoin(users, eq(messages.senderUserId, users.id))
+            .where(eq(messages.id, message.replyToMessageId))
+            .limit(1);
+
+          const [[sender], replyRows] = await Promise.all([senderPromise, replyPromise]);
+          const reply = replyRows[0];
+
+          if (reply) {
+            replyTo = {
+              id: reply.id,
+              content: reply.deletedAt ? null : reply.body,
+              sender: { username: reply.senderUsername },
+            };
+          }
+
+          // 6. Build payload
+          const payload: MessagePayload = {
+            id: message.id,
+            roomId: message.roomId,
+            content: message.body,
+            createdAt: message.createdAt.toISOString(),
+            editedAt: null,
+            deletedAt: null,
+            sender: {
+              id: sender.id,
+              username: sender.username,
+              name: sender.name,
+              image: sender.image,
+            },
+            replyTo,
+          };
+
+          await socket.join(roomId);
+          console.log(`[message:send] userId=${userId} roomId=${roomId} msgId=${message.id}`);
+          io.to(roomId).emit("message:new", payload);
+          callback({ message: payload });
+          return;
+        }
+
+        const [sender] = await senderPromise;
+
         // 6. Build payload
         const payload: MessagePayload = {
           id: message.id,
           roomId: message.roomId,
           content: message.body,
           createdAt: message.createdAt.toISOString(),
+          editedAt: null,
+          deletedAt: null,
           sender: {
             id: sender.id,
             username: sender.username,
@@ -138,9 +212,7 @@ async function bootstrap() {
         // 7. Ensure sender's socket is in the channel, then broadcast
         await socket.join(roomId);
         console.log(`[message:send] userId=${userId} roomId=${roomId} msgId=${message.id}`);
-        console.log(`[message:send] socket.rooms:`, Array.from(socket.rooms));
         io.to(roomId).emit("message:new", payload);
-        console.log(`[message:send] broadcasted message:new`);
         callback({ message: payload });
       },
     );
@@ -162,7 +234,12 @@ async function bootstrap() {
       }
     });
 
+    socket.on("heartbeat", () => {
+      recordHeartbeat(userId, socket.id);
+    });
+
     socket.on("disconnect", () => {
+      removeSocket(userId, socket.id);
       console.log(`User disconnected: ${userId} (${username})`);
     });
   });
@@ -174,6 +251,7 @@ async function bootstrap() {
 
     shuttingDown = true;
     console.log(`Received ${signal}. Shutting down gracefully...`);
+    stopPresenceSweep();
 
     await new Promise<void>((resolve, reject) => {
       io.close((error) => {

@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, lt, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
 import { db } from "@/db";
@@ -6,6 +6,7 @@ import { messages } from "@/db/schema/messages";
 import { roomMembers } from "@/db/schema/rooms";
 import { users } from "@/db/schema/users";
 import { getCurrentUser } from "@/server/auth";
+import type { MessagePayload, ReplyPreview } from "@/lib/socket";
 
 export async function GET(
   req: NextRequest,
@@ -75,6 +76,8 @@ export async function GET(
       roomId: messages.roomId,
       body: messages.body,
       createdAt: messages.createdAt,
+      editedAt: messages.editedAt,
+      replyToMessageId: messages.replyToMessageId,
       senderId: users.id,
       senderUsername: users.username,
       senderName: users.name,
@@ -97,18 +100,50 @@ export async function GET(
   // Reverse to chronological order (oldest first)
   results.reverse();
 
-  const mapped = results.map((row) => ({
+  // Batch-fetch reply-to messages
+  const replyIds = results
+    .map((r) => r.replyToMessageId)
+    .filter((id): id is string => id !== null);
+
+  const replyMap = new Map<string, ReplyPreview>();
+
+  if (replyIds.length > 0) {
+    const replyRows = await db
+      .select({
+        id: messages.id,
+        body: messages.body,
+        deletedAt: messages.deletedAt,
+        senderUsername: users.username,
+      })
+      .from(messages)
+      .innerJoin(users, eq(messages.senderUserId, users.id))
+      .where(inArray(messages.id, replyIds));
+
+    for (const r of replyRows) {
+      replyMap.set(r.id, {
+        id: r.id,
+        content: r.deletedAt ? null : r.body,
+        sender: { username: r.senderUsername },
+      });
+    }
+  }
+
+  const mapped: MessagePayload[] = results.map((row) => ({
     id: row.id,
     roomId: row.roomId,
     content: row.body,
     createdAt: row.createdAt.toISOString(),
+    editedAt: row.editedAt?.toISOString() ?? null,
+    deletedAt: null,
     sender: {
       id: row.senderId,
       username: row.senderUsername,
       name: row.senderName,
       image: row.senderImage,
     },
-    replyTo: null,
+    replyTo: row.replyToMessageId
+      ? replyMap.get(row.replyToMessageId) ?? null
+      : null,
   }));
 
   // nextCursor is the oldest message ID in the batch (first after reversing)

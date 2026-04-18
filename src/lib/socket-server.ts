@@ -4,12 +4,12 @@ import type { ClientToServerEvents, ServerToClientEvents } from "./socket";
 
 type IOServer = Server<ClientToServerEvents, ServerToClientEvents>;
 
-let _io: IOServer | null = null;
+const g = globalThis as unknown as { __socketIO?: IOServer };
 
 export function setIO(io: IOServer): void {
-  _io = io;
+  g.__socketIO = io;
 }
 
 export function getIO(): IOServer | null {
-  return _io;
+  return g.__socketIO ?? null;
 }

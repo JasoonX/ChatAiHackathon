@@ -22,6 +22,8 @@ import {
 import { toast } from "sonner";
 import { z } from "zod";
 
+import { useActivityHeartbeat } from "@/hooks/use-activity";
+import { useSocket } from "@/hooks/use-socket";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -766,6 +768,8 @@ export default function ChatLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const { socket } = useSocket();
+  useActivityHeartbeat(socket);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   return (
