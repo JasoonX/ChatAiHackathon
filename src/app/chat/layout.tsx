@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useDeferredValue, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -171,16 +171,22 @@ function RoomItem({
   name,
   isPrivate,
   unread = 0,
+  isActive = false,
 }: {
   id: string;
   name: string;
   isPrivate?: boolean;
   unread?: number;
+  isActive?: boolean;
 }) {
   return (
     <Link
       href={`/chat/${id}`}
-      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+      className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px] transition-colors ${
+        isActive
+          ? "bg-accent text-foreground"
+          : "text-muted-foreground hover:bg-accent hover:text-foreground"
+      }`}
     >
       {isPrivate ? (
         <Lock className="h-3.5 w-3.5 shrink-0" />
@@ -603,6 +609,10 @@ function TopNav({
 
 function RoomsSidebar() {
   const queryClient = useQueryClient();
+  const pathname = usePathname();
+  const activeRoomId = pathname.startsWith("/chat/")
+    ? pathname.split("/")[2]
+    : null;
 
   const { data: myRoomsData } = useQuery({
     queryKey: ["my-rooms"],
@@ -645,7 +655,12 @@ function RoomsSidebar() {
               </p>
             ) : (
               publicRooms.map((room) => (
-                <RoomItem key={room.id} id={room.id} name={room.name} />
+                <RoomItem
+                  key={room.id}
+                  id={room.id}
+                  name={room.name}
+                  isActive={activeRoomId === room.id}
+                />
               ))
             )}
           </SidebarSection>
@@ -662,6 +677,7 @@ function RoomsSidebar() {
                   id={room.id}
                   name={room.name}
                   isPrivate
+                  isActive={activeRoomId === room.id}
                 />
               ))
             )}
