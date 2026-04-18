@@ -110,6 +110,7 @@ export type ServerToClientEvents = {
   }) => void;
   "room:updated": (payload: RoomUpdatedPayload) => void;
   "room:deleted": (payload: { roomId: string }) => void;
+  "session:revoked": () => void;
 };
 
 export type ClientToServerEvents = {

@@ -8,7 +8,7 @@ import { getCurrentUser } from "@/server/auth";
 
 export async function POST(
   _request: NextRequest,
-  { params }: RouteContext<"/api/rooms/[roomId]/read">,
+  { params }: { params: Promise<{ roomId: string }> },
 ) {
   const user = await getCurrentUser();
   if (!user) {

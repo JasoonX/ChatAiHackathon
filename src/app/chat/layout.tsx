@@ -14,11 +14,13 @@ import {
   Hash,
   Lock,
   MessageSquare,
+  Monitor,
   MoreHorizontal,
   PanelRightClose,
   PanelRightOpen,
   Plus,
   Search,
+  Smartphone,
   User,
   UserPlus,
 } from "lucide-react";
@@ -115,6 +117,19 @@ const createRoomSchema = z.object({
 });
 
 type CreateRoomForm = z.infer<typeof createRoomSchema>;
+
+const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Current password is required"),
+    newPassword: z.string().min(8, "New password must be at least 8 characters"),
+    confirmNewPassword: z.string().min(1, "Confirm your new password"),
+  })
+  .refine((data) => data.newPassword === data.confirmNewPassword, {
+    message: "Passwords do not match",
+    path: ["confirmNewPassword"],
+  });
+
+type ChangePasswordForm = z.infer<typeof changePasswordSchema>;
 
 // ---------------------------------------------------------------------------
 // Placeholder data
@@ -1002,6 +1017,350 @@ function FriendRequestsBell({
   );
 }
 
+function ChangePasswordDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [submitting, setSubmitting] = useState(false);
+
+  const form = useForm<ChangePasswordForm>({
+    resolver: zodResolver(changePasswordSchema),
+    defaultValues: {
+      currentPassword: "",
+      newPassword: "",
+      confirmNewPassword: "",
+    },
+  });
+
+  const onSubmit = async (values: ChangePasswordForm) => {
+    setSubmitting(true);
+    form.clearErrors("root");
+
+    try {
+      const { error } = await authClient.changePassword({
+        currentPassword: values.currentPassword,
+        newPassword: values.newPassword,
+        revokeOtherSessions: false,
+      });
+
+      if (error) {
+        form.setError("root", {
+          message: error.message || "Failed to change password",
+        });
+        return;
+      }
+
+      toast.success("Password changed");
+      form.reset();
+      onOpenChange(false);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        onOpenChange(nextOpen);
+        if (!nextOpen) {
+          form.reset();
+        }
+      }}
+    >
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Change Password</DialogTitle>
+        </DialogHeader>
+
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <FormField
+              control={form.control}
+              name="currentPassword"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Current password</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      type="password"
+                      autoComplete="current-password"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="newPassword"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>New password</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      type="password"
+                      autoComplete="new-password"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="confirmNewPassword"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Confirm new password</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      type="password"
+                      autoComplete="new-password"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {form.formState.errors.root?.message && (
+              <p className="text-sm text-destructive">
+                {form.formState.errors.root.message}
+              </p>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => onOpenChange(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" size="sm" disabled={submitting}>
+                {submitting ? "Saving…" : "Change password"}
+              </Button>
+            </div>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sessions dialog
+// ---------------------------------------------------------------------------
+
+type SessionInfo = {
+  id: string;
+  ipAddress: string | null;
+  browser: string;
+  os: string;
+  createdAt: string;
+  lastActiveAt: string;
+  isCurrent: boolean;
+};
+
+function DeviceIcon({ os }: { os: string }) {
+  if (os === "Android" || os === "iOS") {
+    return <Smartphone className="h-4 w-4 shrink-0 text-muted-foreground" />;
+  }
+  return <Monitor className="h-4 w-4 shrink-0 text-muted-foreground" />;
+}
+
+function formatRelativeTime(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const diffMin = Math.floor(diffMs / 60_000);
+  if (diffMin < 1) return "just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  return `${diffDay}d ago`;
+}
+
+function SessionsDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const queryClient = useQueryClient();
+  const [confirmRevokeId, setConfirmRevokeId] = useState<string | null>(null);
+  const [revoking, setRevoking] = useState(false);
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["sessions"],
+    queryFn: async () => {
+      const res = await fetch("/api/sessions");
+      if (!res.ok) throw new Error("Failed to fetch sessions");
+      return res.json() as Promise<{ sessions: SessionInfo[] }>;
+    },
+    enabled: open,
+    staleTime: 0,
+  });
+
+  const handleRevoke = async (sessionId: string) => {
+    setRevoking(true);
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const err = (await res.json()) as { error?: string };
+        toast.error(err.error ?? "Failed to revoke session");
+        return;
+      }
+      toast.success("Session revoked");
+      setConfirmRevokeId(null);
+      await queryClient.invalidateQueries({ queryKey: ["sessions"] });
+    } finally {
+      setRevoking(false);
+    }
+  };
+
+  const sessions = data?.sessions ?? [];
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Active Sessions</DialogTitle>
+          </DialogHeader>
+
+          {isLoading && (
+            <p className="py-8 text-center text-[13px] text-muted-foreground">
+              Loading…
+            </p>
+          )}
+          {error && (
+            <p className="py-8 text-center text-[13px] text-destructive">
+              Failed to load sessions
+            </p>
+          )}
+
+          <ScrollArea className="max-h-[400px]">
+            <div className="space-y-2 pr-2">
+              {sessions.map((s) => (
+                <div
+                  key={s.id}
+                  className="flex items-center gap-3 rounded-md border bg-card p-3"
+                >
+                  <DeviceIcon os={s.os} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[13px] font-medium">
+                        {s.browser} on {s.os}
+                      </span>
+                      {s.isCurrent && (
+                        <Badge variant="default" className="text-[10px] px-1.5 py-0">
+                          Current
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-[12px] text-muted-foreground">
+                      {s.ipAddress ?? "Unknown IP"} · Last active {formatRelativeTime(s.lastActiveAt)}
+                    </p>
+                  </div>
+                  {!s.isCurrent && (
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="text-[12px] h-7 px-2 shrink-0"
+                      onClick={() => setConfirmRevokeId(s.id)}
+                    >
+                      Revoke
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={confirmRevokeId !== null}
+        onOpenChange={(o) => { if (!o) setConfirmRevokeId(null); }}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Revoke session?</DialogTitle>
+          </DialogHeader>
+          <p className="text-[13px] text-muted-foreground">
+            This will immediately log out the device using that session.
+          </p>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setConfirmRevokeId(null)}
+              disabled={revoking}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={revoking}
+              onClick={() => {
+                if (confirmRevokeId) void handleRevoke(confirmRevokeId);
+              }}
+            >
+              {revoking ? "Revoking…" : "Revoke"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function ProfileMenu() {
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [sessionsOpen, setSessionsOpen] = useState(false);
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="sm" className="gap-1.5">
+            <User className="h-4 w-4" />
+            <span className="hidden sm:inline text-[13px]">Profile</span>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-44">
+          <DropdownMenuItem onClick={() => setChangePasswordOpen(true)}>
+            Change password
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setSessionsOpen(true)}>
+            Active sessions
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <ChangePasswordDialog
+        open={changePasswordOpen}
+        onOpenChange={setChangePasswordOpen}
+      />
+      <SessionsDialog open={sessionsOpen} onOpenChange={setSessionsOpen} />
+    </>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Invite user dialog (context panel for private rooms)
 // ---------------------------------------------------------------------------
@@ -1145,10 +1504,7 @@ function TopNav({
       <div className="ml-auto flex items-center gap-2">
         <FriendRequestsBell socket={socket} />
         <InvitationBell socket={socket} />
-        <Button variant="ghost" size="sm" className="gap-1.5">
-          <User className="h-4 w-4" />
-          <span className="hidden sm:inline text-[13px]">Profile</span>
-        </Button>
+        <ProfileMenu />
         <Button
           variant="ghost"
           size="icon"
@@ -1625,6 +1981,17 @@ export default function ChatLayout({
       // best-effort; keep existing client state on transient failure
     });
   }, [refreshUnread]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const handleSessionRevoked = () => {
+      router.push("/login");
+    };
+    socket.on("session:revoked", handleSessionRevoked);
+    return () => {
+      socket.off("session:revoked", handleSessionRevoked);
+    };
+  }, [router, socket]);
 
   useEffect(() => {
     if (!socket) {
