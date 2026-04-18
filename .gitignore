@@ -1,0 +1,10 @@
+node_modules
+.next
+.env
+.env.local
+*.tsbuildinfo
+uploads/*
+!uploads/.gitkeep
+playwright-report
+test-results
+drizzle/

@@ -1,0 +1,42 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: chat_app
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d chat_app"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - chat-app
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@db:5432/chat_app
+    env_file:
+      - .env
+    networks:
+      - chat-app
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./uploads:/app/uploads
+
+networks:
+  chat-app:
+
+volumes:
+  pg_data:
