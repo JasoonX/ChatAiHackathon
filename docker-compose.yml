@@ -26,13 +26,14 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgres://postgres:postgres@db:5432/chat_app
-    env_file:
-      - .env
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-K9m2Qv8rT1xY6pL4sN7dF3hJ0wZ5cB8uM2qR6tV9yP4nX1kL7aS3dH8jF5pQ2rT6}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+      PORT: ${PORT:-3000}
     networks:
       - chat-app
     volumes:
       - ./uploads:/app/uploads
-    command: ["pnpm", "db:seed"]
+    command: ["sh", "-c", "pnpm db:push && pnpm db:seed"]
     restart: "no"
 
   app:
@@ -46,8 +47,9 @@ services:
         condition: service_completed_successfully
     environment:
       DATABASE_URL: postgres://postgres:postgres@db:5432/chat_app
-    env_file:
-      - .env
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-K9m2Qv8rT1xY6pL4sN7dF3hJ0wZ5cB8uM2qR6tV9yP4nX1kL7aS3dH8jF5pQ2rT6}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+      PORT: ${PORT:-3000}
     networks:
       - chat-app
     ports:

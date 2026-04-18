@@ -46,6 +46,9 @@ function dmKey(a: string, b: string): string {
   return `dm:${pairKey(a, b)}`;
 }
 
+const STRESS_BATCH_SIZE = 500;
+const STRESS_MESSAGE_COUNT = 10_000;
+
 /** Timestamp `days` days + `h` hours + `m` minutes in the past. */
 function ago(days: number, h = 0, m = 0): Date {
   return new Date(Date.now() - (days * 86_400 + h * 3_600 + m * 60) * 1_000);
@@ -156,9 +159,9 @@ function buildGeneralSpecs(
     // idx 27
     { by: carol, text: "Just tested the invitation flow — notification bell works perfectly 🔔", at: ago(3, 9, 25) },
     // idx 28  ← alice calls out carol's bug catch
-    { by: alice, text: "Great catch on that sidebar bug by the way, carol.", at: ago(3, 10, 0) },
+    { by: alice, text: "Great catch on that sidebar bug by the way, carol.", at: ago(3, 10, 2) },
     // idx 29  ← carol replies to idx 28
-    { by: carol, text: "Which one?", at: ago(3, 10, 2), replyToIdx: 28 },
+    { by: carol, text: "Which one?", at: ago(3, 10, 0), replyToIdx: 28 },
     // idx 30
     { by: alice, text: "Accepting an invitation wasn't updating the sidebar room list. Fixed with a query invalidation.", at: ago(3, 10, 4) },
     // idx 31
@@ -180,9 +183,9 @@ function buildGeneralSpecs(
     // idx 38
     { by: carol, text: "Just uploaded a screenshot. Renders inline immediately — looks great 🎉", at: ago(2, 10, 18) },
     // idx 39  ← bob replies to dave's next message
-    { by: dave,  text: "should we add a download button for inline images too?", at: ago(2, 10, 22) },
+    { by: dave,  text: "should we add a download button for inline images too?", at: ago(2, 10, 23) },
     // idx 40  ← reply to idx 39
-    { by: bob,   text: "Already there 😄", at: ago(2, 10, 23), replyToIdx: 39 },
+    { by: bob,   text: "Already there 😄", at: ago(2, 10, 22), replyToIdx: 39 },
     // idx 41
     { by: alice, text: "You're on a roll, bob.", at: ago(2, 10, 25) },
     // idx 42
@@ -204,9 +207,9 @@ function buildGeneralSpecs(
     // idx 49
     { by: alice, text: "Exactly the intended use case!", at: ago(1, 9, 12) },
     // idx 50  ← alice replies to this
-    { by: bob,   text: "Should we prepare seed data for the demo?", at: ago(1, 10, 0) },
+    { by: bob,   text: "Should we prepare seed data for the demo?", at: ago(1, 10, 2) },
     // idx 51  ← reply to idx 50
-    { by: alice, text: "Already on it — seeding the DB right now 🌱", at: ago(1, 10, 2), replyToIdx: 50 },
+    { by: alice, text: "Already on it — seeding the DB right now 🌱", at: ago(1, 10, 0), replyToIdx: 50 },
     // idx 52
     { by: bob,   text: "Perfect. Demo is at 2 pm sharp — everyone be online!", at: ago(1, 10, 5) },
     // idx 53
@@ -285,6 +288,38 @@ function buildEngineeringSpecs(alice: SeedUser, bob: SeedUser): MsgSpec[] {
   ];
 }
 
+function buildStressMessageRows(roomId: string, participants: SeedUser[]) {
+  const now = Date.now();
+  const start = now - 30 * 24 * 60 * 60 * 1000;
+  const intervalMs = Math.floor((now - start) / STRESS_MESSAGE_COUNT);
+  const topics = [
+    "pagination check",
+    "socket sync",
+    "presence heartbeat",
+    "attachment indexing",
+    "room moderation",
+    "friends sidebar",
+    "dm freeze logic",
+    "scroll restoration",
+    "unread tracking",
+    "auth session refresh",
+  ];
+
+  return Array.from({ length: STRESS_MESSAGE_COUNT }, (_, index) => {
+    const sender = participants[index % participants.length];
+    const createdAt = new Date(start + intervalMs * index);
+    const topic = topics[index % topics.length];
+
+    return {
+      roomId,
+      senderUserId: sender.id,
+      body: `Stress message ${index + 1} from ${sender.username} — ${topic}.`,
+      createdAt,
+      updatedAt: createdAt,
+    };
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -332,10 +367,22 @@ async function main() {
   const bob   = await createUser("bob",   "bob@test.com",   "bob123");
   const carol = await createUser("carol", "carol@test.com", "carol123");
   const dave  = await createUser("dave",  "dave@test.com",  "dave123");
+  const erin  = await createUser("erin",  "erin@test.com",  "erin123");
+  const frank = await createUser("frank", "frank@test.com", "frank123");
+  const grace = await createUser("grace", "grace@test.com", "grace123");
+  const heidi = await createUser("heidi", "heidi@test.com", "heidi123");
+  const ivan  = await createUser("ivan",  "ivan@test.com",  "ivan123");
+  const judy  = await createUser("judy",  "judy@test.com",  "judy123");
   console.log(`  alice: ${alice.id}`);
   console.log(`  bob:   ${bob.id}`);
   console.log(`  carol: ${carol.id}`);
   console.log(`  dave:  ${dave.id}`);
+  console.log(`  erin:  ${erin.id}`);
+  console.log(`  frank: ${frank.id}`);
+  console.log(`  grace: ${grace.id}`);
+  console.log(`  heidi: ${heidi.id}`);
+  console.log(`  ivan:  ${ivan.id}`);
+  console.log(`  judy:  ${judy.id}`);
 
   // ── 3. Rooms ────────────────────────────────────────────────────────────
   console.log("Creating rooms…");
@@ -370,6 +417,16 @@ async function main() {
     })
     .returning({ id: rooms.id });
 
+  const [stressTest] = await db
+    .insert(rooms)
+    .values({
+      name: "stress-test",
+      description: "10,000-message room for pagination and scroll verification",
+      type: "public",
+      ownerId: alice.id,
+    })
+    .returning({ id: rooms.id });
+
   // ── 4. Room memberships ─────────────────────────────────────────────────
   await db.insert(roomMembers).values([
     { roomId: general.id, userId: alice.id, role: "admin"  },
@@ -387,6 +444,27 @@ async function main() {
     { roomId: random.id, userId: bob.id,   role: "admin"  },
     { roomId: random.id, userId: carol.id, role: "member" },
   ]);
+
+  const stressParticipants = [
+    alice,
+    bob,
+    carol,
+    dave,
+    erin,
+    frank,
+    grace,
+    heidi,
+    ivan,
+    judy,
+  ];
+
+  await db.insert(roomMembers).values(
+    stressParticipants.map((user, index) => ({
+      roomId: stressTest.id,
+      userId: user.id,
+      role: index === 0 ? ("admin" as const) : ("member" as const),
+    })),
+  );
 
   // ── 5. #general messages (63 + 2 attachment messages = 65) ──────────────
   console.log("Seeding #general messages…");
@@ -438,7 +516,18 @@ async function main() {
 
   console.log(`  ${engIds.length} messages in #engineering`);
 
-  // ── 7. Image attachments in #general ────────────────────────────────────
+  // ── 7. #stress-test messages (10,000) ──────────────────────────────────
+  console.log("Seeding #stress-test messages…");
+  const stressRows = buildStressMessageRows(stressTest.id, stressParticipants);
+
+  for (let start = 0; start < stressRows.length; start += STRESS_BATCH_SIZE) {
+    const batch = stressRows.slice(start, start + STRESS_BATCH_SIZE);
+    await db.insert(messages).values(batch);
+  }
+
+  console.log(`  ${stressRows.length} messages in #stress-test`);
+
+  // ── 8. Image attachments in #general ────────────────────────────────────
   console.log("Creating image attachments…");
   await mkdir(UPLOADS_DIR, { recursive: true });
 
@@ -491,7 +580,7 @@ async function main() {
 
   console.log("  2 image attachments created");
 
-  // ── 8. Alice ↔ Bob friendship + DM room + 10 messages ──────────────────
+  // ── 9. Alice ↔ Bob friendship + DM room + 10 messages ──────────────────
   console.log("Creating alice-bob friendship…");
 
   const aliceBobPairKey = pairKey(alice.id, bob.id);
@@ -562,7 +651,7 @@ async function main() {
 
   console.log("  Friendship, DM room, and 10 DM messages created");
 
-  // ── 9. Carol → Alice pending friend request ─────────────────────────────
+  // ── 10. Carol → Alice pending friend request ────────────────────────────
   console.log("Creating carol → alice pending friend request…");
 
   await db.insert(friendRequests).values({
@@ -576,10 +665,11 @@ async function main() {
   console.log(`
 ✅  Seed complete!
 
-  Users:    alice / bob / carol / dave
+  Users:    alice / bob / carol / dave / erin / frank / grace / heidi / ivan / judy
   Rooms:    #general (public, ${generalIds.length + 2} messages + 2 attachments)
             #engineering (private, ${engIds.length} messages)
             #random (public, no messages)
+            #stress-test (public, ${stressRows.length} messages across 10 users / 30 days)
   Friends:  alice ↔ bob  (with 10 DM messages)
   Pending:  carol → alice friend request
 
@@ -587,6 +677,12 @@ async function main() {
             bob@test.com     / bob123
             carol@test.com   / carol123
             dave@test.com    / dave123
+            erin@test.com    / erin123
+            frank@test.com   / frank123
+            grace@test.com   / grace123
+            heidi@test.com   / heidi123
+            ivan@test.com    / ivan123
+            judy@test.com    / judy123
 `);
 }
 

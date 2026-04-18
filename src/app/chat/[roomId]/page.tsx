@@ -18,12 +18,15 @@ import {
   Reply,
   Info,
   Send,
+  Smile,
   Trash2,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import Avatar from "boring-avatars";
+import EmojiPicker from "@emoji-mart/react";
+import emojiData from "@emoji-mart/data";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -53,15 +56,22 @@ function formatFileSize(bytes: number): string {
 // Attachment display (inside message bubble)
 // ---------------------------------------------------------------------------
 
-function ImageLightbox({
-  images,
-  initialIndex,
-  onClose,
-}: {
-  images: { src: string; alt: string }[];
-  initialIndex: number;
-  onClose: () => void;
-}) {
+type ImageLightboxProps =
+  | {
+      images: { src: string; alt: string }[];
+      initialIndex: number;
+      onClose: () => void;
+    }
+  | {
+      src: string;
+      alt: string;
+      onClose: () => void;
+    };
+
+function ImageLightbox(props: ImageLightboxProps) {
+  const images = "images" in props ? props.images : [{ src: props.src, alt: props.alt }];
+  const initialIndex = "initialIndex" in props ? props.initialIndex : 0;
+  const onClose = props.onClose;
   const [index, setIndex] = useState(initialIndex);
   const total = images.length;
   const hasPrev = index > 0;
@@ -752,6 +762,7 @@ export default function RoomPage() {
   const [replyTo, setReplyTo] = useState<MessagePayload | null>(null);
   const [pendingFiles, setPendingFiles] = useState<{ id: string; file: File }[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   const [showNewMsgPill, setShowNewMsgPill] = useState(false);
 
@@ -763,6 +774,7 @@ export default function RoomPage() {
   const pendingScrollRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
 
   // Get room info from sidebar query (reactive)
   const { data: cachedRooms, isLoading: isLoadingRooms } = useQuery({
@@ -1158,6 +1170,36 @@ export default function RoomPage() {
     }
   }, [pendingFiles, uploadFiles, sendMessage]);
 
+  // Close emoji picker on outside click
+  useEffect(() => {
+    if (!showEmojiPicker) return;
+    const handler = (e: MouseEvent) => {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target as Node)) {
+        setShowEmojiPicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showEmojiPicker]);
+
+  const insertEmoji = useCallback((emoji: string) => {
+    const el = textareaRef.current;
+    if (!el) {
+      setInput((prev) => prev + emoji);
+      setShowEmojiPicker(false);
+      return;
+    }
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    setInput((prev) => prev.slice(0, start) + emoji + prev.slice(end));
+    setShowEmojiPicker(false);
+    requestAnimationFrame(() => {
+      el.focus();
+      const pos = start + emoji.length;
+      el.setSelectionRange(pos, pos);
+    });
+  }, []);
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -1518,16 +1560,42 @@ export default function RoomPage() {
             disabled={sending || uploading || !canMessageDirect}
           />
           <div className="flex items-center justify-between px-1.5 pb-1.5">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-muted-foreground hover:text-foreground"
-              title="Attach file"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-            >
-              <Paperclip className="h-4 w-4" />
-            </Button>
+            <div className="flex items-center gap-0.5">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                title="Attach file"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+              >
+                <Paperclip className="h-4 w-4" />
+              </Button>
+              {/* Emoji picker trigger */}
+              <div ref={emojiPickerRef} className="relative">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  title="Emoji"
+                  onClick={() => setShowEmojiPicker((v) => !v)}
+                  disabled={!canMessageDirect}
+                >
+                  <Smile className="h-4 w-4" />
+                </Button>
+                {showEmojiPicker && (
+                  <div className="absolute bottom-full left-0 mb-1 z-50">
+                    <EmojiPicker
+                      data={emojiData}
+                      theme="dark"
+                      previewPosition="none"
+                      skinTonePosition="none"
+                      onEmojiSelect={(e: { native: string }) => insertEmoji(e.native)}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
             <Button
               size="icon"
               disabled={
