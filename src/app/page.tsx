@@ -3,7 +3,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SESSION_COOKIE_NAME } from "@/lib/auth";
 
 export default async function HomePage() {
@@ -14,31 +13,21 @@ export default async function HomePage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-muted/40 px-4 py-16">
-      <Card className="w-full max-w-2xl rounded-3xl shadow-sm">
-        <CardHeader className="space-y-4">
-          <p className="text-sm uppercase tracking-[0.3em] text-muted-foreground">
-            Hackathon starter
-          </p>
-          <CardTitle className="text-4xl font-semibold tracking-tight">
-            Real-time chat app scaffold
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="max-w-xl text-muted-foreground">
-            Landing page is in place. Authentication screens and protected chat
-            flow are stubbed for Saturday implementation.
-          </p>
-          <div className="mt-8 flex gap-3">
-            <Button asChild>
-              <Link href="/login">Sign in</Link>
-            </Button>
-            <Button asChild variant="outline">
-              <Link href="/register">Register</Link>
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+    <main className="flex min-h-screen flex-col items-center justify-center px-4 text-center">
+      <h1 className="text-[56px] font-bold tracking-[-0.02em] leading-tight">
+        Giga
+      </h1>
+      <p className="mt-3 max-w-md text-lg text-muted-foreground">
+        Real-time chat for teams that move fast.
+      </p>
+      <div className="mt-10 flex gap-3">
+        <Button asChild size="lg">
+          <Link href="/login">Sign in</Link>
+        </Button>
+        <Button asChild variant="secondary" size="lg">
+          <Link href="/register">Register</Link>
+        </Button>
+      </div>
     </main>
   );
 }
