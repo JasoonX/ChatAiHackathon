@@ -22,6 +22,7 @@ with no Earth connection).
 - Drizzle ORM (schema in src/db/schema/\*.ts) + Postgres 16
 - better-auth for sessions/auth (email + password only)
 - Socket.io via custom server (server.ts)
+- TanStack Query for all client-server data fetching
 - Local Docker volume (./uploads) for file uploads
 
 ## Commands
@@ -46,6 +47,32 @@ with no Earth connection).
 - Never implement CRUD operations over Socket.io
 - Never rely on client-sent "inactive" signals for presence — use
   server-side heartbeat timeout
+
+## Data fetching
+
+- TanStack Query is the single source of truth for all server state
+- GET → useQuery, mutations → useMutation
+- Socket.io events update TanStack Query cache directly via
+  queryClient.setQueryData — never maintain parallel React state
+- High-frequency events (message:new, message:updated, message:deleted,
+  presence:update): use setQueryData to patch the cache in-place
+- Low-frequency events (room:member-joined, room:deleted,
+  invitation:received, friend:accepted): use invalidateQueries
+  to trigger a clean refetch
+- All query hooks in src/hooks/ (useRooms.ts, useMessages.ts, etc.)
+- No raw fetch() in components
+- No useQuery for socket-only data (typing indicators) — those use
+  local useState since they're ephemeral and not worth caching
+
+## Message cache updates
+
+- Messages use useInfiniteQuery with cursor pagination
+- Cache structure is { pages: [{ messages: [], nextCursor }] }
+- Socket "message:new": append to the LAST page's messages array
+- Socket "message:updated" / "message:deleted": map across ALL pages
+  to find and replace the message by ID
+- Never replace the entire cache — always preserve the pages structure
+- Never use invalidateQueries for new messages (causes full refetch)
 
 ## Presence implementation
 
