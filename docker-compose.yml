@@ -17,6 +17,24 @@ services:
     volumes:
       - pg_data:/var/lib/postgresql/data
 
+  seed:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@db:5432/chat_app
+    env_file:
+      - .env
+    networks:
+      - chat-app
+    volumes:
+      - ./uploads:/app/uploads
+    command: ["pnpm", "db:seed"]
+    restart: "no"
+
   app:
     build:
       context: .
@@ -24,6 +42,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      seed:
+        condition: service_completed_successfully
     environment:
       DATABASE_URL: postgres://postgres:postgres@db:5432/chat_app
     env_file:

@@ -16,10 +16,11 @@ import {
   MessageSquare,
   Monitor,
   MoreHorizontal,
-  PanelRightClose,
-  PanelRightOpen,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   Search,
+  Settings,
   Smartphone,
   User,
   UserPlus,
@@ -30,6 +31,7 @@ import { z } from "zod";
 import { useActivityHeartbeat } from "@/hooks/use-activity";
 import { useSocket } from "@/hooks/use-socket";
 import { authClient } from "@/lib/auth-client";
+import { getCachedPresence, disconnectSocket } from "@/lib/socket-client";
 import { useUnread } from "@/components/unread-provider";
 import type { InvitationPayload } from "@/lib/socket";
 import type { PresenceSnapshot, PresenceStatus } from "@/lib/socket";
@@ -254,27 +256,29 @@ function ContactItem({
   name,
   presence,
   unread,
+  isActive = false,
   action,
 }: {
   href: string;
   name: string;
   presence: Presence;
   unread: number;
+  isActive?: boolean;
   action?: React.ReactNode;
 }) {
   return (
-    <div className="group/contact flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors">
-      <Link href={href} className="flex min-w-0 flex-1 items-center gap-2">
+    <div className={`group/contact flex w-full items-center rounded-md text-[13px] transition-colors ${isActive ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground"}`}>
+      <Link href={href} className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5">
         <PresenceDot status={presence} />
         <span className="truncate">{name}</span>
       </Link>
       {unread > 0 && (
-        <Badge variant="default" className="text-[10px] px-1.5 py-0">
+        <Badge variant="default" className="text-[10px] px-1.5 py-0 mr-1">
           {unread}
         </Badge>
       )}
       {action && (
-        <div className="shrink-0 opacity-0 transition-opacity group-hover/contact:opacity-100">
+        <div className="shrink-0 opacity-0 transition-opacity group-hover/contact:opacity-100 pr-1">
           {action}
         </div>
       )}
@@ -352,7 +356,13 @@ function MemberItem({
 // Create Room Dialog
 // ---------------------------------------------------------------------------
 
-function CreateRoomDialog({ onSuccess }: { onSuccess: () => void }) {
+function CreateRoomDialog({
+  onSuccess,
+  trigger = "button",
+}: {
+  onSuccess: () => void;
+  trigger?: "button" | "icon";
+}) {
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -394,10 +404,20 @@ function CreateRoomDialog({ onSuccess }: { onSuccess: () => void }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="secondary" size="sm" className="w-full gap-1.5">
-          <Plus className="h-3.5 w-3.5" />
-          Create room
-        </Button>
+        {trigger === "icon" ? (
+          <button
+            type="button"
+            className="rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors"
+            title="Create room"
+          >
+            <Plus className="h-3 w-3" />
+          </button>
+        ) : (
+          <Button variant="secondary" size="sm" className="w-full gap-1.5">
+            <Plus className="h-3.5 w-3.5" />
+            Create room
+          </Button>
+        )}
       </DialogTrigger>
 
       <DialogContent className="sm:max-w-md">
@@ -502,7 +522,13 @@ function CreateRoomDialog({ onSuccess }: { onSuccess: () => void }) {
 // Browse Public Rooms Dialog
 // ---------------------------------------------------------------------------
 
-function BrowseRoomsDialog({ onJoined }: { onJoined: () => void }) {
+function BrowseRoomsDialog({
+  onJoined,
+  trigger = "inline",
+}: {
+  onJoined: () => void;
+  trigger?: "inline" | "icon";
+}) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
@@ -549,13 +575,23 @@ function BrowseRoomsDialog({ onJoined }: { onJoined: () => void }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <button
-          type="button"
-          className="rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors"
-          title="Browse public rooms"
-        >
-          <Globe className="h-3 w-3" />
-        </button>
+        {trigger === "icon" ? (
+          <button
+            type="button"
+            className="rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors"
+            title="Browse public rooms"
+          >
+            <Search className="h-3 w-3" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+          >
+            <Search className="h-3.5 w-3.5 shrink-0" />
+            <span>Browse rooms</span>
+          </button>
+        )}
       </DialogTrigger>
 
       <DialogContent className="sm:max-w-lg">
@@ -632,7 +668,13 @@ type Invitation = {
   createdAt: string;
 };
 
-function AddFriendDialog({ onSuccess }: { onSuccess?: () => void }) {
+function AddFriendDialog({
+  onSuccess,
+  trigger = "button",
+}: {
+  onSuccess?: () => void;
+  trigger?: "button" | "icon";
+}) {
   const [open, setOpen] = useState(false);
   const [username, setUsername] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -671,10 +713,20 @@ function AddFriendDialog({ onSuccess }: { onSuccess?: () => void }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="secondary" size="sm" className="w-full gap-1.5">
-          <UserPlus className="h-3.5 w-3.5" />
-          Add friend
-        </Button>
+        {trigger === "icon" ? (
+          <button
+            type="button"
+            className="rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors"
+            title="Add friend"
+          >
+            <Plus className="h-3 w-3" />
+          </button>
+        ) : (
+          <Button variant="secondary" size="sm" className="w-full gap-1.5">
+            <UserPlus className="h-3.5 w-3.5" />
+            Add friend
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
@@ -1574,20 +1626,9 @@ function InviteUserDialog({
 // Top nav
 // ---------------------------------------------------------------------------
 
-const NAV_LINKS = [
-  { label: "Public Rooms", href: "/chat" },
-  { label: "Private Rooms", href: "/chat" },
-  { label: "Contacts", href: "/chat" },
-  { label: "Sessions", href: "/chat" },
-];
-
 function TopNav({
-  sidebarOpen,
-  onToggleSidebar,
   socket,
 }: {
-  sidebarOpen: boolean;
-  onToggleSidebar: () => void;
   socket: ReturnType<typeof useSocket>["socket"];
 }) {
   return (
@@ -1597,35 +1638,10 @@ function TopNav({
         <span className="text-base font-semibold tracking-tight">Giga</span>
       </Link>
 
-      <nav className="hidden md:flex items-center gap-1 ml-4">
-        {NAV_LINKS.map((link) => (
-          <Link
-            key={link.label}
-            href={link.href}
-            className="rounded-md px-3 py-1.5 text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-          >
-            {link.label}
-          </Link>
-        ))}
-      </nav>
-
       <div className="ml-auto flex items-center gap-2">
         <FriendRequestsBell socket={socket} />
         <InvitationBell socket={socket} />
         <ProfileMenu />
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={onToggleSidebar}
-          title={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
-        >
-          {sidebarOpen ? (
-            <PanelRightClose className="h-4 w-4" />
-          ) : (
-            <PanelRightOpen className="h-4 w-4" />
-          )}
-        </Button>
         <LogoutButton />
       </div>
     </header>
@@ -1639,9 +1655,11 @@ function TopNav({
 function RoomsSidebar({
   myRooms,
   socket,
+  onCollapse,
 }: {
   myRooms: MyRoom[];
   socket: ReturnType<typeof useSocket>["socket"];
+  onCollapse: () => void;
 }) {
   const queryClient = useQueryClient();
   const pathname = usePathname();
@@ -1649,6 +1667,8 @@ function RoomsSidebar({
   const activeRoomId = pathname.startsWith("/chat/")
     ? pathname.split("/")[2]
     : null;
+
+  const [presence, setPresence] = useState<PresenceSnapshot>(() => getCachedPresence());
 
   const publicRooms = myRooms.filter((r) => r.type === "public");
   const privateRooms = myRooms.filter((r) => r.type === "private");
@@ -1709,24 +1729,44 @@ function RoomsSidebar({
       void queryClient.invalidateQueries({ queryKey: ["my-rooms"] });
     };
 
+    const handleSnapshot = (snapshot: PresenceSnapshot) => setPresence(snapshot);
+    const handleUpdate = ({ userId, status }: { userId: string; status: PresenceStatus }) => {
+      setPresence((prev) => ({ ...prev, [userId]: status }));
+    };
+
     socket.on("friend:request-received", invalidate);
     socket.on("friend:accepted", invalidate);
     socket.on("user:banned", invalidate);
+    socket.on("presence:snapshot", handleSnapshot);
+    socket.on("presence:update", handleUpdate);
+    // Sync with cache in case the snapshot arrived before this effect ran.
+    setPresence(getCachedPresence());
 
     return () => {
       socket.off("friend:request-received", invalidate);
       socket.off("friend:accepted", invalidate);
       socket.off("user:banned", invalidate);
+      socket.off("presence:snapshot", handleSnapshot);
+      socket.off("presence:update", handleUpdate);
     };
   }, [queryClient, socket]);
 
   return (
     <aside className="flex w-[260px] shrink-0 flex-col border-r bg-card">
-      <div className="p-3">
-        <div className="relative">
+      <div className="flex items-center gap-2 p-3">
+        <div className="relative flex-1">
           <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input placeholder="Search…" className="h-8 pl-8 text-[13px]" />
         </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 shrink-0"
+          onClick={onCollapse}
+          title="Collapse sidebar"
+        >
+          <PanelLeftClose className="h-4 w-4" />
+        </Button>
       </div>
 
       <Separator />
@@ -1735,7 +1775,9 @@ function RoomsSidebar({
         <div className="py-2 space-y-3">
           <SidebarSection
             title="Public Rooms"
-            action={<BrowseRoomsDialog onJoined={invalidateRooms} />}
+            action={
+              <CreateRoomDialog onSuccess={invalidateRooms} trigger="icon" />
+            }
           >
             {publicRooms.length === 0 ? (
               <p className="px-2 py-1 text-[12px] text-muted-foreground">
@@ -1752,6 +1794,7 @@ function RoomsSidebar({
                 />
               ))
             )}
+            <BrowseRoomsDialog onJoined={invalidateRooms} />
           </SidebarSection>
 
           <SidebarSection title="Private Rooms">
@@ -1778,7 +1821,17 @@ function RoomsSidebar({
 
           <Separator className="mx-3" />
 
-          <SidebarSection title="Contacts">
+          <SidebarSection
+            title="Contacts"
+            action={
+              <AddFriendDialog
+                trigger="icon"
+                onSuccess={() => {
+                  void queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
+                }}
+              />
+            }
+          >
             {friends.length === 0 ? (
               <p className="px-2 py-1 text-[12px] text-muted-foreground">
                 No friends yet
@@ -1789,7 +1842,8 @@ function RoomsSidebar({
                   key={friend.friendshipId}
                   href={friend.directRoomId ? `/chat/${friend.directRoomId}` : "/chat"}
                   name={friend.username}
-                  presence={friend.presence}
+                  presence={presence[friend.userId] ?? friend.presence}
+                  isActive={!!friend.directRoomId && activeRoomId === friend.directRoomId}
                   unread={getUnreadCount(friend.directRoomId) || friend.unreadCount}
                   action={
                     <DropdownMenu>
@@ -1820,16 +1874,6 @@ function RoomsSidebar({
         </div>
       </ScrollArea>
 
-      <Separator />
-
-      <div className="space-y-2 p-3">
-        <AddFriendDialog
-          onSuccess={() => {
-            void queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
-          }}
-        />
-        <CreateRoomDialog onSuccess={invalidateRooms} />
-      </div>
     </aside>
   );
 }
@@ -1849,7 +1893,7 @@ function ContextPanel({
 }) {
   const queryClient = useQueryClient();
   const activeRoom = myRooms.find((r) => r.id === activeRoomId);
-  const [presence, setPresence] = useState<PresenceSnapshot>({});
+  const [presence, setPresence] = useState<PresenceSnapshot>(() => getCachedPresence());
   const { data: session } = authClient.useSession();
 
   const { data: roomData, isLoading } = useQuery({
@@ -1899,6 +1943,8 @@ function ContextPanel({
 
     socket.on("presence:snapshot", handleSnapshot);
     socket.on("presence:update", handleUpdate);
+    // Sync with cache in case the snapshot arrived before this effect ran.
+    setPresence(getCachedPresence());
 
     return () => {
       socket.off("presence:snapshot", handleSnapshot);
@@ -1960,7 +2006,28 @@ function ContextPanel({
   return (
     <aside className="hidden lg:flex w-[240px] shrink-0 flex-col border-l bg-card">
       <div className="p-4 space-y-1">
-        <h3 className="text-sm font-semibold">Room info</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="flex-1 text-sm font-semibold">Room info</h3>
+          {canOpenManageRoom && activeRoomId && (
+            <RoomManagementModal
+              roomId={activeRoomId}
+              onDeleted={() => {
+                if (session?.user?.id) {
+                  void queryClient.invalidateQueries({ queryKey: ["my-rooms"] });
+                }
+              }}
+              trigger={
+                <button
+                  type="button"
+                  className="rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors"
+                  title="Manage room"
+                >
+                  <Settings className="h-3.5 w-3.5" />
+                </button>
+              }
+            />
+          )}
+        </div>
         <p className="text-[12px] text-muted-foreground">
           {roomData?.room.type === "private"
             ? "Private room"
@@ -1977,10 +2044,13 @@ function ContextPanel({
 
       <Separator />
 
-      <div className="px-4 pt-3 pb-1">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+      <div className="flex items-center gap-1 px-4 pt-3 pb-1">
+        <span className="flex-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
           Members ({activeMembers.length})
         </span>
+        {activeRoom?.type === "private" && activeRoomId && (
+          <InviteUserDialog roomId={activeRoomId} trigger="icon" />
+        )}
       </div>
 
       <ScrollArea className="flex-1">
@@ -2025,28 +2095,6 @@ function ContextPanel({
         </div>
       </ScrollArea>
 
-      <Separator />
-
-      <div className="p-3 space-y-2">
-        {activeRoom?.type === "private" && activeRoomId && (
-          <InviteUserDialog roomId={activeRoomId} />
-        )}
-        {canOpenManageRoom && activeRoomId && (
-          <RoomManagementModal
-            roomId={activeRoomId}
-            onDeleted={() => {
-              if (session?.user?.id) {
-                void queryClient.invalidateQueries({ queryKey: ["my-rooms"] });
-              }
-            }}
-            trigger={
-              <Button variant="ghost" size="sm" className="w-full text-[13px]">
-                Manage room
-              </Button>
-            }
-          />
-        )}
-      </div>
     </aside>
   );
 }
@@ -2093,6 +2141,7 @@ export default function ChatLayout({
   useEffect(() => {
     if (!socket) return;
     const handleSessionRevoked = () => {
+      disconnectSocket();
       router.push("/login");
     };
     socket.on("session:revoked", handleSessionRevoked);
@@ -2193,14 +2242,28 @@ export default function ChatLayout({
 
   return (
     <div className="flex h-screen flex-col bg-background">
-      <TopNav
-        sidebarOpen={sidebarOpen}
-        onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-        socket={socket}
-      />
+      <TopNav socket={socket} />
 
       <div className="flex flex-1 overflow-hidden">
-        {sidebarOpen && <RoomsSidebar myRooms={myRooms} socket={socket} />}
+        {sidebarOpen ? (
+          <RoomsSidebar
+            myRooms={myRooms}
+            socket={socket}
+            onCollapse={() => setSidebarOpen(false)}
+          />
+        ) : (
+          <div className="flex shrink-0 flex-col items-center border-r bg-card py-2 px-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setSidebarOpen(true)}
+              title="Expand sidebar"
+            >
+              <PanelLeftOpen className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
 
         <main className="flex flex-1 flex-col overflow-hidden">
           {children}

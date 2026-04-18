@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { authClient } from "@/lib/auth-client";
+import { disconnectSocket } from "@/lib/socket-client";
 
 export function LogoutButton() {
   const router = useRouter();
@@ -13,6 +14,10 @@ export function LogoutButton() {
 
   const handleSignOut = async () => {
     setIsPending(true);
+
+    // Disconnect sockets server-side first (while session is still valid),
+    // so presence goes to "offline" immediately instead of lingering as AFK.
+    await fetch("/api/logout", { method: "POST" }).catch(() => {});
 
     const { error } = await authClient.signOut();
 
@@ -23,8 +28,8 @@ export function LogoutButton() {
       return;
     }
 
+    disconnectSocket();
     router.replace("/login");
-    router.refresh();
   };
 
   return (

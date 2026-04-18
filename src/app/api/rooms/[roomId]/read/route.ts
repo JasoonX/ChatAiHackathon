@@ -1,5 +1,5 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
 import { db } from "@/db";
 import { messages } from "@/db/schema/messages";
@@ -7,7 +7,7 @@ import { roomMembers, rooms } from "@/db/schema/rooms";
 import { getCurrentUser } from "@/server/auth";
 
 export async function POST(
-  _request: NextRequest,
+  _request: Request,
   { params }: { params: Promise<{ roomId: string }> },
 ) {
   const user = await getCurrentUser();
