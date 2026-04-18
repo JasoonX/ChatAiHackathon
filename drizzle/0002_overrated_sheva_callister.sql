@@ -1,0 +1,2 @@
+DROP INDEX "room_invitations_room_invitee_status_unique_idx";--> statement-breakpoint
+CREATE UNIQUE INDEX "room_invitations_room_invitee_pending_unique_idx" ON "room_invitations" USING btree ("room_id","invitee_user_id") WHERE "room_invitations"."status" = 'pending';

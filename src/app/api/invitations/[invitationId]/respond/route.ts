@@ -1,7 +1,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 
 import { db } from "@/db";
-import { roomInvitations, roomMembers, rooms } from "@/db/schema/rooms";
+import { roomBans, roomInvitations, roomMembers, rooms } from "@/db/schema/rooms";
 import { getIO } from "@/lib/socket-server";
 import { getCurrentUser } from "@/server/auth";
 
@@ -59,6 +59,48 @@ export async function POST(
 
   const newStatus = body.action === "accept" ? "accepted" : "rejected";
 
+  if (body.action === "accept") {
+    const [existingBan] = await db
+      .select({ id: roomBans.id })
+      .from(roomBans)
+      .where(
+        and(
+          eq(roomBans.roomId, invitation.roomId),
+          eq(roomBans.userId, user.id),
+        ),
+      )
+      .limit(1);
+
+    if (existingBan) {
+      return Response.json(
+        { error: "You are banned from this room and cannot accept the invitation" },
+        { status: 403 },
+      );
+    }
+
+    const [existingMembership] = await db
+      .select({ id: roomMembers.id })
+      .from(roomMembers)
+      .where(
+        and(
+          eq(roomMembers.roomId, invitation.roomId),
+          eq(roomMembers.userId, user.id),
+        ),
+      )
+      .limit(1);
+
+    if (!existingMembership) {
+      await db
+        .insert(roomMembers)
+        .values({
+          roomId: invitation.roomId,
+          userId: user.id,
+          role: "member",
+        })
+        .onConflictDoNothing();
+    }
+  }
+
   // Update invitation status
   await db
     .update(roomInvitations)
@@ -66,16 +108,6 @@ export async function POST(
     .where(eq(roomInvitations.id, invitationId));
 
   if (body.action === "accept") {
-    // Insert room member
-    await db
-      .insert(roomMembers)
-      .values({
-        roomId: invitation.roomId,
-        userId: user.id,
-        role: "member",
-      })
-      .onConflictDoNothing();
-
     // Socket: join room channel + broadcast
     const io = getIO();
     if (io) {

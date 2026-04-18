@@ -11,6 +11,7 @@ import { users } from "@/db/schema/users";
 import { getIO } from "@/lib/socket-server";
 import type { MessagePayload } from "@/lib/socket";
 import { getCurrentUser } from "@/server/auth";
+import { getDirectMessageState } from "@/server/friends";
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20 MB
 const MAX_IMAGE_SIZE = 3 * 1024 * 1024; // 3 MB
@@ -52,6 +53,16 @@ export async function POST(
 
   if (!membership) {
     return Response.json({ error: "Not a room member" }, { status: 403 });
+  }
+
+  if (room.type === "direct") {
+    const directState = await getDirectMessageState(roomId, user.id);
+    if (!directState?.canMessage) {
+      return Response.json(
+        { error: "You cannot message this user" },
+        { status: 403 },
+      );
+    }
   }
 
   // Parse multipart form data

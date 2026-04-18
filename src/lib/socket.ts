@@ -51,6 +51,13 @@ export type InvitationPayload = {
   createdAt: string;
 };
 
+export type FriendRequestPayload = {
+  requestId: string;
+  requesterUserId: string;
+  requesterUsername: string;
+  createdAt: string;
+};
+
 export type RoomUpdatedPayload = {
   roomId: string;
   name: string;
@@ -75,6 +82,17 @@ export type ServerToClientEvents = {
   "invitation:received": (payload: InvitationPayload) => void;
   "presence:update": (payload: PresenceUpdate) => void;
   "presence:snapshot": (payload: PresenceSnapshot) => void;
+  "friend:request-received": (payload: FriendRequestPayload) => void;
+  "friend:accepted": (payload: {
+    requestId: string;
+    friendUserId: string;
+    friendUsername: string;
+    directRoomId: string;
+  }) => void;
+  "user:banned": (payload: {
+    blockerUserId: string;
+    blockedUserId: string;
+  }) => void;
   "room:member-banned": (payload: {
     roomId: string;
     userId: string;

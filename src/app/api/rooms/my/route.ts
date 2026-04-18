@@ -17,6 +17,8 @@ export async function GET() {
       name: rooms.name,
       type: rooms.type,
       role: roomMembers.role,
+      ownerId: rooms.ownerId,
+      description: rooms.description,
     })
     .from(roomMembers)
     .innerJoin(rooms, eq(rooms.id, roomMembers.roomId))

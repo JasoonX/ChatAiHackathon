@@ -8,6 +8,7 @@ import { users } from "@/db/schema/users";
 import { canUserDeleteMessage } from "@/lib/permissions";
 import { getIO } from "@/lib/socket-server";
 import { getCurrentUser } from "@/server/auth";
+import { getDirectMessageState } from "@/server/friends";
 
 type RouteContext = { params: Promise<{ messageId: string }> };
 
@@ -55,6 +56,22 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
 
   if (!msg || msg.deletedAt) {
     return NextResponse.json({ error: "Message not found" }, { status: 404 });
+  }
+
+  const [messageRoom] = await db
+    .select({
+      id: rooms.id,
+      type: rooms.type,
+    })
+    .from(rooms)
+    .where(eq(rooms.id, msg.roomId))
+    .limit(1);
+
+  if (messageRoom?.type === "direct") {
+    const directState = await getDirectMessageState(msg.roomId, user.id);
+    if (!directState?.canMessage) {
+      return NextResponse.json({ error: "You cannot message this user" }, { status: 403 });
+    }
   }
 
   // Only the author can edit
@@ -142,6 +159,13 @@ export async function DELETE(_req: NextRequest, { params }: RouteContext) {
 
   if (!room) {
     return NextResponse.json({ error: "Room not found" }, { status: 404 });
+  }
+
+  if (room.type === "direct") {
+    const directState = await getDirectMessageState(room.id, user.id);
+    if (!directState?.canMessage) {
+      return NextResponse.json({ error: "You cannot message this user" }, { status: 403 });
+    }
   }
 
   // Collect admin user IDs for permission check

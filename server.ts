@@ -12,6 +12,7 @@ import { socketAuthMiddleware } from "./src/lib/socket-auth";
 import { setIO } from "./src/lib/socket-server";
 import { canUserPostInRoom } from "./src/lib/permissions";
 import type { MessagePayload } from "./src/lib/socket";
+import { getDirectMessageState } from "./src/server/friends";
 import {
   addSocket,
   removeSocket,
@@ -115,6 +116,14 @@ async function bootstrap() {
         if (!canUserPostInRoom(user, permRoom, permMembership)) {
           callback({ error: "Not a member of this room" });
           return;
+        }
+
+        if (room.type === "direct") {
+          const directState = await getDirectMessageState(roomId, userId);
+          if (!directState?.canMessage) {
+            callback({ error: "You cannot message this user" });
+            return;
+          }
         }
 
         // 4. Insert message

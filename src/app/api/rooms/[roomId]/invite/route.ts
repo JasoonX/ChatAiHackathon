@@ -1,7 +1,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 
 import { db } from "@/db";
-import { roomInvitations, roomMembers, rooms } from "@/db/schema/rooms";
+import { roomBans, roomInvitations, roomMembers, rooms } from "@/db/schema/rooms";
 import { users } from "@/db/schema/users";
 import { canUserInviteToRoom } from "@/lib/permissions";
 import { getIO } from "@/lib/socket-server";
@@ -102,6 +102,24 @@ export async function POST(
   if (existingMembership) {
     return Response.json(
       { error: "User is already a member" },
+      { status: 409 },
+    );
+  }
+
+  const [existingBan] = await db
+    .select({ id: roomBans.id })
+    .from(roomBans)
+    .where(
+      and(
+        eq(roomBans.roomId, roomId),
+        eq(roomBans.userId, invitee.id),
+      ),
+    )
+    .limit(1);
+
+  if (existingBan) {
+    return Response.json(
+      { error: "User is banned from this room and cannot be invited" },
       { status: 409 },
     );
   }
