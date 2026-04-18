@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 
 import { Toaster } from "@/components/ui/sonner";
 
+import { Providers } from "./providers";
 import "./globals.css";
 
 const inter = localFont({
@@ -33,7 +34,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={`${inter.variable} ${jetbrainsMono.variable} font-sans`}>
-        {children}
+        <Providers>{children}</Providers>
         <Toaster richColors position="top-right" />
       </body>
     </html>
