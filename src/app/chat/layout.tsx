@@ -715,7 +715,13 @@ function InvitationBell({
 // Invite user dialog (context panel for private rooms)
 // ---------------------------------------------------------------------------
 
-function InviteUserDialog({ roomId }: { roomId: string }) {
+function InviteUserDialog({
+  roomId,
+  trigger = "button",
+}: {
+  roomId: string;
+  trigger?: "button" | "icon";
+}) {
   const [open, setOpen] = useState(false);
   const [username, setUsername] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -748,9 +754,19 @@ function InviteUserDialog({ roomId }: { roomId: string }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="secondary" size="sm" className="w-full text-[13px]">
-          Invite user
-        </Button>
+        {trigger === "icon" ? (
+          <button
+            type="button"
+            className="rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors"
+            title="Invite user to room"
+          >
+            <Plus className="h-3 w-3" />
+          </button>
+        ) : (
+          <Button variant="secondary" size="sm" className="w-full text-[13px]">
+            Invite user
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
@@ -910,7 +926,15 @@ function RoomsSidebar({ myRooms }: { myRooms: MyRoom[] }) {
             )}
           </SidebarSection>
 
-          <SidebarSection title="Private Rooms">
+          <SidebarSection
+            title="Private Rooms"
+            action={
+              activeRoomId &&
+              privateRooms.some((r) => r.id === activeRoomId) ? (
+                <InviteUserDialog roomId={activeRoomId} trigger="icon" />
+              ) : undefined
+            }
+          >
             {privateRooms.length === 0 ? (
               <p className="px-2 py-1 text-[12px] text-muted-foreground">
                 No rooms yet

@@ -349,10 +349,18 @@ export default function RoomPage() {
   const initialLoadedRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Get room info from sidebar cache
-  const cachedRooms = queryClient.getQueryData<{
-    rooms: { id: string; name: string; type: string; ownerId: string | null }[];
-  }>(["my-rooms"]);
+  // Get room info from sidebar query (reactive)
+  const { data: cachedRooms } = useQuery({
+    queryKey: ["my-rooms"],
+    queryFn: async () => {
+      const res = await fetch("/api/rooms/my");
+      if (!res.ok) throw new Error("Failed to fetch rooms");
+      return res.json() as Promise<{
+        rooms: { id: string; name: string; type: string; role: string; ownerId?: string | null }[];
+      }>;
+    },
+    staleTime: 30_000,
+  });
   const room = cachedRooms?.rooms.find((r) => r.id === roomId);
   const roomName = room?.name;
 
