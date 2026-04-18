@@ -14,11 +14,13 @@ import {
   Hash,
   Lock,
   MessageSquare,
+  MoreHorizontal,
   PanelRightClose,
   PanelRightOpen,
   Plus,
   Search,
   User,
+  UserPlus,
 } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -26,6 +28,7 @@ import { z } from "zod";
 import { useActivityHeartbeat } from "@/hooks/use-activity";
 import { useSocket } from "@/hooks/use-socket";
 import { authClient } from "@/lib/auth-client";
+import { useUnread } from "@/components/unread-provider";
 import type { InvitationPayload } from "@/lib/socket";
 import type { PresenceSnapshot, PresenceStatus } from "@/lib/socket";
 import { RoomManagementModal } from "@/components/room-management-modal";
@@ -39,6 +42,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Form,
   FormControl,
@@ -75,6 +84,26 @@ type PublicRoom = {
   memberCount: number;
 };
 
+type Friend = {
+  friendshipId: string;
+  userId: string;
+  username: string;
+  name: string;
+  image: string | null;
+  directRoomId: string | null;
+  presence: Presence;
+  unreadCount: number;
+};
+
+type FriendRequest = {
+  id: string;
+  requesterUserId: string;
+  requesterUsername: string;
+  requesterName: string;
+  requesterImage: string | null;
+  createdAt: string;
+};
+
 // ---------------------------------------------------------------------------
 // Schemas
 // ---------------------------------------------------------------------------
@@ -88,18 +117,8 @@ const createRoomSchema = z.object({
 type CreateRoomForm = z.infer<typeof createRoomSchema>;
 
 // ---------------------------------------------------------------------------
-// Placeholder data (contacts + members — not yet wired)
+// Placeholder data
 // ---------------------------------------------------------------------------
-
-const PLACEHOLDER_CONTACTS: {
-  name: string;
-  presence: Presence;
-  unread: number;
-}[] = [
-  { name: "Alice", presence: "online", unread: 0 },
-  { name: "Bob", presence: "afk", unread: 0 },
-  { name: "Carol", presence: "offline", unread: 2 },
-];
 
 // ---------------------------------------------------------------------------
 // Presence dot
@@ -169,34 +188,45 @@ function RoomItem({
   isPrivate,
   unread = 0,
   isActive = false,
+  action,
 }: {
   id: string;
   name: string;
   isPrivate?: boolean;
   unread?: number;
   isActive?: boolean;
+  action?: React.ReactNode;
 }) {
   return (
-    <Link
-      href={`/chat/${id}`}
-      className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px] transition-colors ${
+    <div
+      className={`group/room flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px] transition-colors ${
         isActive
           ? "bg-accent text-foreground"
           : "text-muted-foreground hover:bg-accent hover:text-foreground"
       }`}
     >
-      {isPrivate ? (
-        <Lock className="h-3.5 w-3.5 shrink-0" />
-      ) : (
-        <Hash className="h-3.5 w-3.5 shrink-0" />
-      )}
-      <span className="truncate">{name}</span>
+      <Link
+        href={`/chat/${id}`}
+        className="flex flex-1 items-center gap-2 min-w-0"
+      >
+        {isPrivate ? (
+          <Lock className="h-3.5 w-3.5 shrink-0" />
+        ) : (
+          <Hash className="h-3.5 w-3.5 shrink-0" />
+        )}
+        <span className="truncate">{name}</span>
+      </Link>
       {unread > 0 && (
-        <Badge variant="default" className="ml-auto text-[10px] px-1.5 py-0">
+        <Badge variant="default" className="text-[10px] px-1.5 py-0">
           {unread}
         </Badge>
       )}
-    </Link>
+      {action && (
+        <div className="opacity-0 group-hover/room:opacity-100 transition-opacity shrink-0">
+          {action}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -205,27 +235,35 @@ function RoomItem({
 // ---------------------------------------------------------------------------
 
 function ContactItem({
+  href,
   name,
   presence,
   unread,
+  action,
 }: {
+  href: string;
   name: string;
   presence: Presence;
   unread: number;
+  action?: React.ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-    >
-      <PresenceDot status={presence} />
-      <span className="truncate">{name}</span>
+    <div className="group/contact flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors">
+      <Link href={href} className="flex min-w-0 flex-1 items-center gap-2">
+        <PresenceDot status={presence} />
+        <span className="truncate">{name}</span>
+      </Link>
       {unread > 0 && (
-        <Badge variant="default" className="ml-auto text-[10px] px-1.5 py-0">
+        <Badge variant="default" className="text-[10px] px-1.5 py-0">
           {unread}
         </Badge>
       )}
-    </button>
+      {action && (
+        <div className="shrink-0 opacity-0 transition-opacity group-hover/contact:opacity-100">
+          {action}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -234,13 +272,21 @@ function ContactItem({
 // ---------------------------------------------------------------------------
 
 function MemberItem({
+  userId,
   name,
   role,
   presence,
+  canShowActions = false,
+  onAddFriend,
+  onBanUser,
 }: {
+  userId: string;
   name: string;
   role: "owner" | "admin" | "member";
   presence: Presence;
+  canShowActions?: boolean;
+  onAddFriend?: (userId: string) => void;
+  onBanUser?: (userId: string) => void;
 }) {
   const roleVariant =
     role === "owner"
@@ -263,6 +309,26 @@ function MemberItem({
         </Badge>
       )}
       <PresenceDot status={presence} />
+      {canShowActions && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-7 w-7">
+              <MoreHorizontal className="h-3.5 w-3.5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-40">
+            <DropdownMenuItem onClick={() => onAddFriend?.(userId)}>
+              Add friend
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onClick={() => onBanUser?.(userId)}
+            >
+              Ban user
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </div>
   );
 }
@@ -551,6 +617,84 @@ type Invitation = {
   createdAt: string;
 };
 
+function AddFriendDialog({ onSuccess }: { onSuccess?: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [username, setUsername] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!username.trim()) {
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/friends/request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: username.trim() }),
+      });
+
+      if (!res.ok) {
+        const err = (await res.json()) as { error?: string };
+        setError(err.error ?? "Failed to send friend request");
+        return;
+      }
+
+      toast.success(`Friend request sent to ${username.trim()}`);
+      setUsername("");
+      setOpen(false);
+      onSuccess?.();
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="secondary" size="sm" className="w-full gap-1.5">
+          <UserPlus className="h-3.5 w-3.5" />
+          Add friend
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Add Friend</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={onSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <label htmlFor="friend-username" className="text-[13px] font-medium">
+              Username
+            </label>
+            <Input
+              id="friend-username"
+              placeholder="Enter username…"
+              value={username}
+              onChange={(e) => {
+                setUsername(e.target.value);
+                setError(null);
+              }}
+            />
+            {error && <p className="text-[12px] text-destructive">{error}</p>}
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" size="sm" disabled={submitting || !username.trim()}>
+              {submitting ? "Sending…" : "Send request"}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Invitation bell (top nav)
 // ---------------------------------------------------------------------------
@@ -704,6 +848,160 @@ function InvitationBell({
   );
 }
 
+function FriendRequestsBell({
+  socket,
+}: {
+  socket: ReturnType<typeof useSocket>["socket"];
+}) {
+  const [open, setOpen] = useState(false);
+  const queryClient = useQueryClient();
+  const router = useRouter();
+
+  const { data } = useQuery({
+    queryKey: ["friend-requests"],
+    queryFn: async () => {
+      const res = await fetch("/api/friends/requests");
+      if (!res.ok) throw new Error("Failed to fetch friend requests");
+      return res.json() as Promise<{ requests: FriendRequest[] }>;
+    },
+    staleTime: 30_000,
+  });
+
+  useEffect(() => {
+    if (!socket) {
+      return;
+    }
+
+    const invalidate = () => {
+      void queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
+      void queryClient.invalidateQueries({ queryKey: ["friends"] });
+    };
+
+    socket.on("friend:request-received", invalidate);
+    socket.on("friend:accepted", invalidate);
+    socket.on("user:banned", invalidate);
+
+    return () => {
+      socket.off("friend:request-received", invalidate);
+      socket.off("friend:accepted", invalidate);
+      socket.off("user:banned", invalidate);
+    };
+  }, [queryClient, socket]);
+
+  const requests = data?.requests ?? [];
+
+  const respond = useMutation({
+    mutationFn: async ({
+      requestId,
+      action,
+    }: {
+      requestId: string;
+      action: "accept" | "reject";
+    }) => {
+      const res = await fetch(`/api/friends/request/${requestId}/respond`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      if (!res.ok) {
+        const err = (await res.json()) as { error?: string };
+        throw new Error(err.error ?? "Failed to respond");
+      }
+      return (await res.json()) as { directRoomId?: string };
+    },
+    onSuccess: (payload, { action }) => {
+      void queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
+      void queryClient.invalidateQueries({ queryKey: ["friends"] });
+      void queryClient.invalidateQueries({ queryKey: ["my-rooms"] });
+      if (action === "accept") {
+        toast.success("Friend request accepted");
+        if (payload.directRoomId) {
+          router.push(`/chat/${payload.directRoomId}`);
+        }
+        setOpen(false);
+      } else {
+        toast.success("Friend request rejected");
+      }
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="icon" className="relative h-8 w-8">
+          <UserPlus className="h-4 w-4" />
+          {requests.length > 0 && (
+            <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-medium text-destructive-foreground">
+              {requests.length}
+            </span>
+          )}
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Friend Requests</DialogTitle>
+        </DialogHeader>
+        <ScrollArea className="max-h-80">
+          {requests.length === 0 ? (
+            <p className="py-8 text-center text-[13px] text-muted-foreground">
+              No pending friend requests
+            </p>
+          ) : (
+            <div className="space-y-2 pr-2">
+              {requests.map((request) => (
+                <div
+                  key={request.id}
+                  className="flex items-center gap-3 rounded-md border bg-card p-3"
+                >
+                  <Avatar className="h-8 w-8">
+                    <AvatarFallback className="text-[11px]">
+                      {request.requesterUsername.slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-medium truncate">
+                      {request.requesterUsername}
+                    </p>
+                    <p className="text-[12px] text-muted-foreground truncate">
+                      {request.requesterName}
+                    </p>
+                  </div>
+                  <div className="flex gap-1.5 shrink-0">
+                    <Button
+                      size="sm"
+                      className="h-7 px-2 text-[12px]"
+                      disabled={respond.isPending}
+                      onClick={() =>
+                        respond.mutate({ requestId: request.id, action: "accept" })
+                      }
+                    >
+                      Accept
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 text-[12px]"
+                      disabled={respond.isPending}
+                      onClick={() =>
+                        respond.mutate({ requestId: request.id, action: "reject" })
+                      }
+                    >
+                      Reject
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Invite user dialog (context panel for private rooms)
 // ---------------------------------------------------------------------------
@@ -753,7 +1051,7 @@ function InviteUserDialog({
             className="rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors"
             title="Invite user to room"
           >
-            <Plus className="h-3 w-3" />
+            <UserPlus className="h-3 w-3" />
           </button>
         ) : (
           <Button variant="secondary" size="sm" className="w-full text-[13px]">
@@ -845,6 +1143,7 @@ function TopNav({
       </nav>
 
       <div className="ml-auto flex items-center gap-2">
+        <FriendRequestsBell socket={socket} />
         <InvitationBell socket={socket} />
         <Button variant="ghost" size="sm" className="gap-1.5">
           <User className="h-4 w-4" />
@@ -873,9 +1172,16 @@ function TopNav({
 // Left sidebar
 // ---------------------------------------------------------------------------
 
-function RoomsSidebar({ myRooms }: { myRooms: MyRoom[] }) {
+function RoomsSidebar({
+  myRooms,
+  socket,
+}: {
+  myRooms: MyRoom[];
+  socket: ReturnType<typeof useSocket>["socket"];
+}) {
   const queryClient = useQueryClient();
   const pathname = usePathname();
+  const { getUnreadCount } = useUnread();
   const activeRoomId = pathname.startsWith("/chat/")
     ? pathname.split("/")[2]
     : null;
@@ -883,8 +1189,72 @@ function RoomsSidebar({ myRooms }: { myRooms: MyRoom[] }) {
   const publicRooms = myRooms.filter((r) => r.type === "public");
   const privateRooms = myRooms.filter((r) => r.type === "private");
 
+  const { data: friendsData } = useQuery({
+    queryKey: ["friends"],
+    queryFn: async () => {
+      const res = await fetch("/api/friends");
+      if (!res.ok) throw new Error("Failed to fetch friends");
+      return res.json() as Promise<{ friends: Friend[] }>;
+    },
+    staleTime: 30_000,
+  });
+
+  const friends = friendsData?.friends ?? [];
+  const removeFriendMutation = useMutation({
+    mutationFn: async ({
+      friendshipId,
+      username,
+    }: {
+      friendshipId: string;
+      username: string;
+    }) => {
+      const res = await fetch(`/api/friends/${friendshipId}`, {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        const err = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(err?.error ?? "Failed to remove friend");
+      }
+
+      return { username };
+    },
+    onSuccess: async ({ username }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["friends"] }),
+        queryClient.invalidateQueries({ queryKey: ["my-rooms"] }),
+      ]);
+      toast.success(`${username} was removed from friends`);
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
+
   const invalidateRooms = () =>
     queryClient.invalidateQueries({ queryKey: ["my-rooms"] });
+
+  useEffect(() => {
+    if (!socket) {
+      return;
+    }
+
+    const invalidate = () => {
+      void queryClient.invalidateQueries({ queryKey: ["friends"] });
+      void queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
+      void queryClient.invalidateQueries({ queryKey: ["my-rooms"] });
+    };
+
+    socket.on("friend:request-received", invalidate);
+    socket.on("friend:accepted", invalidate);
+    socket.on("user:banned", invalidate);
+
+    return () => {
+      socket.off("friend:request-received", invalidate);
+      socket.off("friend:accepted", invalidate);
+      socket.off("user:banned", invalidate);
+    };
+  }, [queryClient, socket]);
 
   return (
     <aside className="flex w-[260px] shrink-0 flex-col border-r bg-card">
@@ -913,21 +1283,14 @@ function RoomsSidebar({ myRooms }: { myRooms: MyRoom[] }) {
                   key={room.id}
                   id={room.id}
                   name={room.name}
+                  unread={getUnreadCount(room.id)}
                   isActive={activeRoomId === room.id}
                 />
               ))
             )}
           </SidebarSection>
 
-          <SidebarSection
-            title="Private Rooms"
-            action={
-              activeRoomId &&
-              privateRooms.some((r) => r.id === activeRoomId) ? (
-                <InviteUserDialog roomId={activeRoomId} trigger="icon" />
-              ) : undefined
-            }
-          >
+          <SidebarSection title="Private Rooms">
             {privateRooms.length === 0 ? (
               <p className="px-2 py-1 text-[12px] text-muted-foreground">
                 No rooms yet
@@ -939,7 +1302,11 @@ function RoomsSidebar({ myRooms }: { myRooms: MyRoom[] }) {
                   id={room.id}
                   name={room.name}
                   isPrivate
+                  unread={getUnreadCount(room.id)}
                   isActive={activeRoomId === room.id}
+                  action={
+                    <InviteUserDialog roomId={room.id} trigger="icon" />
+                  }
                 />
               ))
             )}
@@ -948,21 +1315,55 @@ function RoomsSidebar({ myRooms }: { myRooms: MyRoom[] }) {
           <Separator className="mx-3" />
 
           <SidebarSection title="Contacts">
-            {PLACEHOLDER_CONTACTS.map((contact) => (
-              <ContactItem
-                key={contact.name}
-                name={contact.name}
-                presence={contact.presence}
-                unread={contact.unread}
-              />
-            ))}
+            {friends.length === 0 ? (
+              <p className="px-2 py-1 text-[12px] text-muted-foreground">
+                No friends yet
+              </p>
+            ) : (
+              friends.map((friend) => (
+                <ContactItem
+                  key={friend.friendshipId}
+                  href={friend.directRoomId ? `/chat/${friend.directRoomId}` : "/chat"}
+                  name={friend.username}
+                  presence={friend.presence}
+                  unread={getUnreadCount(friend.directRoomId) || friend.unreadCount}
+                  action={
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-7 w-7">
+                          <MoreHorizontal className="h-3.5 w-3.5" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-40">
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onClick={() =>
+                            removeFriendMutation.mutate({
+                              friendshipId: friend.friendshipId,
+                              username: friend.username,
+                            })
+                          }
+                        >
+                          Remove friend
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  }
+                />
+              ))
+            )}
           </SidebarSection>
         </div>
       </ScrollArea>
 
       <Separator />
 
-      <div className="p-3">
+      <div className="space-y-2 p-3">
+        <AddFriendDialog
+          onSuccess={() => {
+            void queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
+          }}
+        />
         <CreateRoomDialog onSuccess={invalidateRooms} />
       </div>
     </aside>
@@ -1041,9 +1442,44 @@ function ContextPanel({
     };
   }, [socket]);
 
+  const runMemberAction = useCallback(
+    async ({
+      url,
+      method = "POST",
+      body,
+      successMessage,
+    }: {
+      url: string;
+      method?: "POST" | "DELETE";
+      body?: unknown;
+      successMessage: string;
+    }) => {
+      const response = await fetch(url, {
+        method,
+        headers: body ? { "Content-Type": "application/json" } : undefined,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+
+      if (!response.ok) {
+        const error = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(error?.error ?? "Request failed");
+      }
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["friends"] }),
+        queryClient.invalidateQueries({ queryKey: ["friend-requests"] }),
+        queryClient.invalidateQueries({ queryKey: ["room-management", activeRoomId] }),
+      ]);
+
+      toast.success(successMessage);
+    },
+    [activeRoomId, queryClient],
+  );
+
   const activeMembers =
     roomData?.members.map((member) => ({
-      name: member.username,
+      userId: member.userId,
+      username: member.username,
       role: (member.isOwner ? "owner" : member.role) as
         | "owner"
         | "admin"
@@ -1096,10 +1532,29 @@ function ContextPanel({
           ) : (
             activeMembers.map((member) => (
               <MemberItem
-                key={`${member.role}:${member.name}`}
-                name={member.name}
+                key={`${member.role}:${member.userId}`}
+                userId={member.userId}
+                name={member.username}
                 role={member.role}
                 presence={member.presence}
+                canShowActions={session?.user?.id !== member.userId}
+                onAddFriend={(userId) => {
+                  void runMemberAction({
+                    url: "/api/friends/request",
+                    body: { username: member.username },
+                    successMessage: `Friend request sent to ${member.username}`,
+                  }).catch((error: Error) => {
+                    toast.error(error.message);
+                  });
+                }}
+                onBanUser={(userId) => {
+                  void runMemberAction({
+                    url: `/api/users/${userId}/ban`,
+                    successMessage: `${member.username} was banned`,
+                  }).catch((error: Error) => {
+                    toast.error(error.message);
+                  });
+                }}
               />
             ))
           )}
@@ -1147,6 +1602,7 @@ export default function ChatLayout({
   const queryClient = useQueryClient();
   const router = useRouter();
   const { data: session } = authClient.useSession();
+  const { incrementUnread, clearUnread, refreshUnread } = useUnread();
   const pathname = usePathname();
   const activeRoomId = pathname.startsWith("/chat/")
     ? pathname.split("/")[2]
@@ -1163,6 +1619,12 @@ export default function ChatLayout({
   });
 
   const myRooms = myRoomsData?.rooms ?? [];
+
+  useEffect(() => {
+    void refreshUnread().catch(() => {
+      // best-effort; keep existing client state on transient failure
+    });
+  }, [refreshUnread]);
 
   useEffect(() => {
     if (!socket) {
@@ -1194,6 +1656,19 @@ export default function ChatLayout({
     const onAdminUpdated = ({ roomId }: { roomId: string }) => refreshRoom(roomId);
     const onBanRemoved = ({ roomId }: { roomId: string }) => refreshRoom(roomId);
     const onRoomUpdated = ({ roomId }: { roomId: string }) => refreshRoom(roomId);
+    const onFriendEvent = () => {
+      void queryClient.invalidateQueries({ queryKey: ["friends"] });
+      void queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
+      void queryClient.invalidateQueries({ queryKey: ["my-rooms"] });
+    };
+    const onNewMessage = ({ roomId }: { roomId: string }) => {
+      if (roomId === activeRoomId) {
+        clearUnread(roomId);
+        return;
+      }
+
+      incrementUnread(roomId);
+    };
     const onRoomDeleted = ({ roomId }: { roomId: string }) => {
       refreshRoom(roomId);
       if (activeRoomId === roomId) {
@@ -1221,6 +1696,10 @@ export default function ChatLayout({
     socket.on("room:updated", onRoomUpdated);
     socket.on("room:deleted", onRoomDeleted);
     socket.on("room:member-banned", onMemberBanned);
+    socket.on("friend:request-received", onFriendEvent);
+    socket.on("friend:accepted", onFriendEvent);
+    socket.on("user:banned", onFriendEvent);
+    socket.on("message:new", onNewMessage);
 
     return () => {
       socket.off("room:member-joined", onMemberJoined);
@@ -1230,8 +1709,12 @@ export default function ChatLayout({
       socket.off("room:updated", onRoomUpdated);
       socket.off("room:deleted", onRoomDeleted);
       socket.off("room:member-banned", onMemberBanned);
+      socket.off("friend:request-received", onFriendEvent);
+      socket.off("friend:accepted", onFriendEvent);
+      socket.off("user:banned", onFriendEvent);
+      socket.off("message:new", onNewMessage);
     };
-  }, [activeRoomId, queryClient, router, session?.user?.id, socket]);
+  }, [activeRoomId, clearUnread, incrementUnread, queryClient, router, session?.user?.id, socket]);
 
   return (
     <div className="flex h-screen flex-col bg-background">
@@ -1242,7 +1725,7 @@ export default function ChatLayout({
       />
 
       <div className="flex flex-1 overflow-hidden">
-        {sidebarOpen && <RoomsSidebar myRooms={myRooms} />}
+        {sidebarOpen && <RoomsSidebar myRooms={myRooms} socket={socket} />}
 
         <main className="flex flex-1 flex-col overflow-hidden">
           {children}

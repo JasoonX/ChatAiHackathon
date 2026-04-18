@@ -15,6 +15,20 @@
       "when": 1776510510963,
       "tag": "0001_happy_agent_zero",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1776526743129,
+      "tag": "0002_overrated_sheva_callister",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1776529800000,
+      "tag": "0003_tidy_unread_tracking",
+      "breakpoints": true
     }
   ]
 }

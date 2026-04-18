@@ -27,6 +27,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
+import { useUnread } from "@/components/unread-provider";
 import { useSocket } from "@/hooks/use-socket";
 import { authClient } from "@/lib/auth-client";
 import type { AttachmentPayload, MessagePayload } from "@/lib/socket";
@@ -453,6 +454,13 @@ type MessagesResponse = {
   nextCursor: string | null;
 };
 
+type Friend = {
+  friendshipId: string;
+  userId: string;
+  username: string;
+  directRoomId: string | null;
+};
+
 export default function RoomPage() {
   const params = useParams();
   const roomId = params.roomId as string;
@@ -460,6 +468,7 @@ export default function RoomPage() {
   const queryClient = useQueryClient();
   const { data: session } = authClient.useSession();
   const currentUserId = session?.user?.id;
+  const { clearUnread } = useUnread();
 
   const [msgs, setMsgs] = useState<MessagePayload[]>([]);
   const [oldestCursor, setOldestCursor] = useState<string | null>(null);
@@ -485,17 +494,37 @@ export default function RoomPage() {
       const res = await fetch("/api/rooms/my");
       if (!res.ok) throw new Error("Failed to fetch rooms");
       return res.json() as Promise<{
-        rooms: { id: string; name: string; type: string; role: string; ownerId?: string | null }[];
+        rooms: {
+          id: string;
+          name: string;
+          type: string;
+          role: "member" | "admin";
+          ownerId?: string | null;
+        }[];
       }>;
     },
     staleTime: 30_000,
   });
   const room = cachedRooms?.rooms.find((r) => r.id === roomId);
-  const roomName = room?.name;
+  const { data: friendsData } = useQuery({
+    queryKey: ["friends"],
+    queryFn: async () => {
+      const res = await fetch("/api/friends");
+      if (!res.ok) throw new Error("Failed to fetch friends");
+      return res.json() as Promise<{ friends: Friend[] }>;
+    },
+    staleTime: 30_000,
+  });
+  const friends = friendsData?.friends ?? [];
+  const directFriend = friends.find((friend) => friend.directRoomId === roomId);
+  const isDirectRoom = room?.type === "direct";
+  const canMessageDirect = !isDirectRoom || Boolean(directFriend);
+  const roomName =
+    isDirectRoom ? directFriend?.username ?? "Direct message" : room?.name;
 
   // Check if current user is room admin/owner (for delete permissions)
   const isRoomAdminOrOwner = currentUserId
-    ? room?.ownerId === currentUserId
+    ? room?.ownerId === currentUserId || room?.role === "admin"
     : false;
 
   // -------------------------------------------------------------------------
@@ -538,6 +567,24 @@ export default function RoomPage() {
     setOldestCursor(initialData.nextCursor);
     initialLoadedRef.current = false;
   }, [initialData]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function markAsRead() {
+      const res = await fetch(`/api/rooms/${roomId}/read`, { method: "POST" });
+      if (!res.ok || cancelled) {
+        return;
+      }
+      clearUnread(roomId);
+    }
+
+    void markAsRead();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clearUnread, roomId]);
 
   // Scroll to bottom after initial messages render
   useEffect(() => {
@@ -656,7 +703,7 @@ export default function RoomPage() {
 
   const sendMessage = useCallback(() => {
     const content = input.trim();
-    if (!content || sending || !socket) return;
+    if (!content || sending || !socket || !canMessageDirect) return;
     setSending(true);
     setInput("");
 
@@ -710,14 +757,14 @@ export default function RoomPage() {
         }
       },
     );
-  }, [socket, roomId, input, sending, replyTo]);
+  }, [socket, roomId, input, sending, replyTo, canMessageDirect]);
 
   // -------------------------------------------------------------------------
   // Upload attachment
   // -------------------------------------------------------------------------
 
   const uploadFile = useCallback(async () => {
-    if (!pendingFile || uploading) return;
+    if (!pendingFile || uploading || !canMessageDirect) return;
     setUploading(true);
 
     const formData = new FormData();
@@ -746,7 +793,7 @@ export default function RoomPage() {
     } finally {
       setUploading(false);
     }
-  }, [pendingFile, uploading, input, roomId]);
+  }, [pendingFile, uploading, input, roomId, canMessageDirect]);
 
   const handleSend = useCallback(() => {
     if (pendingFile) {
@@ -965,6 +1012,11 @@ export default function RoomPage() {
 
       {/* Input area */}
       <div className="px-4 py-3 border-t border-border/60 shrink-0">
+        {isDirectRoom && !canMessageDirect && (
+          <div className="mb-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-[12px] text-muted-foreground">
+            You cannot message this user.
+          </div>
+        )}
         <div className="flex items-end gap-2">
           <input
             ref={fileInputRef}
@@ -991,11 +1043,16 @@ export default function RoomPage() {
             placeholder={pendingFile ? "Add a comment…" : "Message..."}
             className="min-h-[40px] max-h-32 resize-none flex-1"
             rows={1}
-            disabled={sending || uploading}
+            disabled={sending || uploading || !canMessageDirect}
           />
           <Button
             size="icon"
-            disabled={(!input.trim() && !pendingFile) || sending || uploading}
+            disabled={
+              (!input.trim() && !pendingFile) ||
+              sending ||
+              uploading ||
+              !canMessageDirect
+            }
             onClick={handleSend}
             className="h-10 w-10 shrink-0"
             title="Send"

@@ -75,12 +75,14 @@ export const roomMembers = pgTable(
     lastReadAt: timestamp("last_read_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    lastReadMessageId: uuid("last_read_message_id"),
   },
   (table) => [
     uniqueIndex("room_members_room_user_unique_idx").on(table.roomId, table.userId),
     index("room_members_user_id_idx").on(table.userId),
     index("room_members_room_role_idx").on(table.roomId, table.role),
     index("room_members_user_last_read_idx").on(table.userId, table.lastReadAt),
+    index("room_members_last_read_message_id_idx").on(table.lastReadMessageId),
   ],
 );
 
@@ -104,11 +106,10 @@ export const roomInvitations = pgTable(
     respondedAt: timestamp("responded_at", { withTimezone: true }),
   },
   (table) => [
-    uniqueIndex("room_invitations_room_invitee_status_unique_idx").on(
+    uniqueIndex("room_invitations_room_invitee_pending_unique_idx").on(
       table.roomId,
       table.inviteeUserId,
-      table.status,
-    ),
+    ).where(sql`${table.status} = 'pending'`),
     index("room_invitations_invitee_user_id_idx").on(table.inviteeUserId),
     index("room_invitations_room_id_idx").on(table.roomId),
     index("room_invitations_created_at_idx").on(table.createdAt),
