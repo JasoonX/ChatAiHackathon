@@ -23,6 +23,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import Avatar from "boring-avatars";
+
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -35,7 +37,7 @@ import { useUnread } from "@/components/unread-provider";
 import { useContextPanel } from "@/components/context-panel-context";
 import { useSocket } from "@/hooks/use-socket";
 import { authClient } from "@/lib/auth-client";
-import type { AttachmentPayload, MessagePayload } from "@/lib/socket";
+import type { AttachmentPayload, MessagePayload, PresenceSnapshot, PresenceStatus } from "@/lib/socket";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -310,8 +312,8 @@ function AttachmentPreview({
         </div>
         {lightboxOpen && (
           <ImageLightbox
-            src={preview}
-            alt={file.name}
+            images={[{ src: preview, alt: file.name }]}
+            initialIndex={0}
             onClose={() => setLightboxOpen(false)}
           />
         )}
@@ -374,6 +376,30 @@ function DateSeparator({ date }: { date: Date }) {
 
 // ---------------------------------------------------------------------------
 // Message bubble
+const AVATAR_COLORS = ["#C0634A", "#6B5B93", "#2D7DD2", "#52B788", "#E09B3D"];
+const AVATAR_SIZE = 30;
+
+const PRESENCE_COLOR: Record<string, string> = {
+  online: "bg-success",
+  afk: "bg-warning",
+  offline: "bg-muted-foreground/40",
+};
+
+function UserAvatar({ name, presence }: { name: string; presence?: PresenceStatus }) {
+  return (
+    <div className="relative shrink-0" style={{ width: AVATAR_SIZE, height: AVATAR_SIZE }}>
+      <div className="rounded-full overflow-hidden w-full h-full">
+        <Avatar size={AVATAR_SIZE} name={name} variant="beam" colors={AVATAR_COLORS} />
+      </div>
+      {presence && (
+        <span
+          className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-background ${PRESENCE_COLOR[presence] ?? PRESENCE_COLOR.offline}`}
+        />
+      )}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 
 function MessageBubble({
@@ -381,6 +407,7 @@ function MessageBubble({
   currentUserId,
   isRoomAdminOrOwner,
   grouped = false,
+  senderPresence,
   onReply,
   onReplyClick,
   onEdit,
@@ -390,6 +417,7 @@ function MessageBubble({
   currentUserId: string | undefined;
   isRoomAdminOrOwner: boolean;
   grouped?: boolean;
+  senderPresence?: PresenceStatus;
   onReply: (msg: MessagePayload) => void;
   onReplyClick: (messageId: string) => void;
   onEdit: (msg: MessagePayload) => void;
@@ -407,25 +435,63 @@ function MessageBubble({
   const canReply = !isDeleted;
   const showMenu = canEdit || canDelete || canReply;
 
+  const menuButton = showMenu && (
+    <div className="absolute right-0 top-0 opacity-0 group-hover:opacity-100 transition-opacity">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-36">
+          {canReply && (
+            <DropdownMenuItem onClick={() => onReply(message)}>
+              <Reply className="mr-2 h-4 w-4" /> Reply
+            </DropdownMenuItem>
+          )}
+          {canEdit && (
+            <DropdownMenuItem onClick={() => onEdit(message)}>
+              <Pencil className="mr-2 h-4 w-4" /> Edit
+            </DropdownMenuItem>
+          )}
+          {canDelete && (
+            <DropdownMenuItem onClick={() => onDelete(message)} className="text-destructive focus:text-destructive">
+              <Trash2 className="mr-2 h-4 w-4" /> Delete
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+
   if (isDeleted) {
     return (
-      <div className="flex-1 min-w-0">
-        <div className="flex items-baseline gap-2 mb-0.5">
-          <span className="text-[13px] font-semibold text-foreground">
-            {message.sender.name || message.sender.username}
-          </span>
-          <span className="text-[11px] text-muted-foreground">{time}</span>
+      <div className="flex gap-2.5 items-start">
+        {grouped
+          ? <div style={{ width: AVATAR_SIZE }} className="shrink-0" />
+          : <UserAvatar name={message.sender.username} presence={senderPresence} />
+        }
+        <div className="flex-1 min-w-0">
+          {!grouped && (
+            <div className="flex items-baseline gap-2 mb-0.5">
+              <span className="text-[13px] font-semibold text-foreground">
+                {message.sender.name || message.sender.username}
+              </span>
+              <span className="text-[11px] text-muted-foreground">{time}</span>
+            </div>
+          )}
+          <p className="text-[13px] italic text-muted-foreground">
+            This message was deleted
+          </p>
         </div>
-        <p className="text-[13px] italic text-muted-foreground">
-          This message was deleted
-        </p>
       </div>
     );
   }
 
   if (grouped) {
     return (
-      <div className="group relative flex items-start">
+      <div className="group relative flex gap-2.5 items-start">
+        <div style={{ width: AVATAR_SIZE }} className="shrink-0" />
         <div className="flex-1 min-w-0">
           {message.content && (
             <p className="text-[13px] leading-relaxed text-foreground/90 whitespace-pre-wrap break-words">
@@ -437,43 +503,14 @@ function MessageBubble({
             <AttachmentGroup attachments={message.attachments} />
           )}
         </div>
-        {showMenu && (
-          <div className="absolute right-0 top-0 opacity-0 group-hover:opacity-100 transition-opacity">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground">
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-36">
-                {canReply && (
-                  <DropdownMenuItem onClick={() => onReply(message)}>
-                    <Reply className="mr-2 h-4 w-4" />
-                    Reply
-                  </DropdownMenuItem>
-                )}
-                {canEdit && (
-                  <DropdownMenuItem onClick={() => onEdit(message)}>
-                    <Pencil className="mr-2 h-4 w-4" />
-                    Edit
-                  </DropdownMenuItem>
-                )}
-                {canDelete && (
-                  <DropdownMenuItem onClick={() => onDelete(message)} className="text-destructive focus:text-destructive">
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Delete
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        )}
+        {menuButton}
       </div>
     );
   }
 
   return (
-    <div className="group relative flex items-start">
+    <div className="group relative flex gap-2.5 items-start">
+      <UserAvatar name={message.sender.username} presence={senderPresence} />
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline gap-2 mb-0.5">
           <span className="text-[13px] font-semibold text-foreground">
@@ -513,45 +550,7 @@ function MessageBubble({
           <AttachmentGroup attachments={message.attachments} />
         )}
       </div>
-
-      {showMenu && (
-        <div className="absolute right-0 top-0 opacity-0 group-hover:opacity-100 transition-opacity">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-muted-foreground hover:text-foreground"
-              >
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-36">
-              {canReply && (
-                <DropdownMenuItem onClick={() => onReply(message)}>
-                  <Reply className="mr-2 h-4 w-4" />
-                  Reply
-                </DropdownMenuItem>
-              )}
-              {canEdit && (
-                <DropdownMenuItem onClick={() => onEdit(message)}>
-                  <Pencil className="mr-2 h-4 w-4" />
-                  Edit
-                </DropdownMenuItem>
-              )}
-              {canDelete && (
-                <DropdownMenuItem
-                  onClick={() => onDelete(message)}
-                  className="text-destructive focus:text-destructive"
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Delete
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      )}
+      {menuButton}
     </div>
   );
 }
@@ -648,6 +647,7 @@ function EditableMessage({
   isRoomAdminOrOwner,
   editingId,
   grouped = false,
+  senderPresence,
   onReply,
   onReplyClick,
   onStartEdit,
@@ -660,6 +660,7 @@ function EditableMessage({
   isRoomAdminOrOwner: boolean;
   editingId: string | null;
   grouped?: boolean;
+  senderPresence?: PresenceStatus;
   onReply: (msg: MessagePayload) => void;
   onReplyClick: (messageId: string) => void;
   onStartEdit: (msg: MessagePayload) => void;
@@ -674,18 +675,26 @@ function EditableMessage({
     });
 
     return (
-      <div className="flex-1 min-w-0">
-        <div className="flex items-baseline gap-2 mb-0.5">
-          <span className="text-[13px] font-semibold text-foreground">
-            {message.sender.name || message.sender.username}
-          </span>
-          <span className="text-[11px] text-muted-foreground">{time}</span>
+      <div className="flex gap-2.5 items-start">
+        {grouped
+          ? <div style={{ width: AVATAR_SIZE }} className="shrink-0" />
+          : <UserAvatar name={message.sender.username} presence={senderPresence} />
+        }
+        <div className="flex-1 min-w-0">
+          {!grouped && (
+            <div className="flex items-baseline gap-2 mb-0.5">
+              <span className="text-[13px] font-semibold text-foreground">
+                {message.sender.name || message.sender.username}
+              </span>
+              <span className="text-[11px] text-muted-foreground">{time}</span>
+            </div>
+          )}
+          <InlineEditForm
+            message={message}
+            onSave={onSaveEdit}
+            onCancel={onCancelEdit}
+          />
         </div>
-        <InlineEditForm
-          message={message}
-          onSave={onSaveEdit}
-          onCancel={onCancelEdit}
-        />
       </div>
     );
   }
@@ -696,6 +705,7 @@ function EditableMessage({
       currentUserId={currentUserId}
       isRoomAdminOrOwner={isRoomAdminOrOwner}
       grouped={grouped}
+      senderPresence={senderPresence}
       onReply={onReply}
       onReplyClick={onReplyClick}
       onEdit={onStartEdit}
@@ -731,6 +741,7 @@ export default function RoomPage() {
   const { clearUnread } = useUnread();
   const { open: panelOpen, toggle: togglePanel, available: panelAvailable } = useContextPanel();
 
+  const [presence, setPresence] = useState<PresenceSnapshot>({});
   const [msgs, setMsgs] = useState<MessagePayload[]>([]);
   const [oldestCursor, setOldestCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -940,13 +951,21 @@ export default function RoomPage() {
       );
     };
 
+    const onSnapshot = (snap: PresenceSnapshot) => setPresence(snap);
+    const onPresenceUpdate = ({ userId, status }: { userId: string; status: PresenceStatus }) =>
+      setPresence((prev) => ({ ...prev, [userId]: status }));
+
     socket.on("message:new", onMessage);
     socket.on("message:updated", onUpdated);
     socket.on("message:deleted", onDeleted);
+    socket.on("presence:snapshot", onSnapshot);
+    socket.on("presence:update", onPresenceUpdate);
     return () => {
       socket.off("message:new", onMessage);
       socket.off("message:updated", onUpdated);
       socket.off("message:deleted", onDeleted);
+      socket.off("presence:snapshot", onSnapshot);
+      socket.off("presence:update", onPresenceUpdate);
     };
   }, [socket, roomId]);
 
@@ -1306,7 +1325,18 @@ export default function RoomPage() {
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border/60 shrink-0 bg-background/80 backdrop-blur-sm">
-        <Hash className="h-4 w-4 text-muted-foreground shrink-0" />
+        {isDirectRoom && directFriend ? (
+          <div className="relative shrink-0 h-6 w-6">
+            <div className="rounded-full overflow-hidden w-full h-full">
+              <Avatar size={24} name={directFriend.username} variant="beam" colors={AVATAR_COLORS} />
+            </div>
+            {presence[directFriend.userId] && (
+              <span className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full ring-2 ring-background ${PRESENCE_COLOR[presence[directFriend.userId]] ?? PRESENCE_COLOR.offline}`} />
+            )}
+          </div>
+        ) : (
+          <Hash className="h-4 w-4 text-muted-foreground shrink-0" />
+        )}
         {(isLoadingRooms || isLoadingFriends) && !roomName ? (
           <div className="h-4 w-32 rounded bg-muted animate-pulse flex-1 max-w-[8rem]" />
         ) : (
@@ -1387,6 +1417,7 @@ export default function RoomPage() {
                   isRoomAdminOrOwner={isRoomAdminOrOwner}
                   editingId={editingId}
                   grouped={grouped}
+                  senderPresence={presence[msg.sender.id]}
                   onReply={handleReply}
                   onReplyClick={scrollToMessage}
                   onStartEdit={(m) => {

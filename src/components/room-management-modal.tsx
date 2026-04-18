@@ -1,5 +1,6 @@
 "use client";
 
+import Avatar from "boring-avatars";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -28,6 +29,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+
+const AVATAR_COLORS = ["#C0634A", "#6B5B93", "#2D7DD2", "#52B788", "#E09B3D"];
 
 type RoomManagementResponse = {
   room: {
@@ -351,6 +356,9 @@ export function RoomManagementModal({
                         className="grid grid-cols-[2fr_120px_120px_2fr] gap-3 border-b px-4 py-3 text-sm last:border-b-0"
                       >
                         <div className="flex items-center gap-2">
+                          <div className="h-6 w-6 shrink-0 rounded-full overflow-hidden">
+                            <Avatar size={24} name={member.username} variant="beam" colors={AVATAR_COLORS} />
+                          </div>
                           <span className="font-medium">{member.username}</span>
                           {session?.user?.id === member.userId && (
                             <span className="text-[11px] text-muted-foreground">(you)</span>
@@ -462,18 +470,23 @@ export function RoomManagementModal({
                         key={admin.userId}
                         className="flex items-center justify-between gap-3 rounded-md border p-3"
                       >
-                        <div className="space-y-1">
-                          <p className="text-sm font-medium">
-                            {admin.username}
-                            {session?.user?.id === admin.userId && (
-                              <span className="ml-1 text-[11px] font-normal text-muted-foreground">(you)</span>
-                            )}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {admin.isOwner
-                              ? "Owner, cannot lose admin rights"
-                              : "Admin"}
-                          </p>
+                        <div className="flex items-center gap-3">
+                          <div className="h-7 w-7 shrink-0 rounded-full overflow-hidden">
+                            <Avatar size={28} name={admin.username} variant="beam" colors={AVATAR_COLORS} />
+                          </div>
+                          <div className="space-y-0.5">
+                            <p className="text-sm font-medium">
+                              {admin.username}
+                              {session?.user?.id === admin.userId && (
+                                <span className="ml-1 text-[11px] font-normal text-muted-foreground">(you)</span>
+                              )}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {admin.isOwner
+                                ? "Owner, cannot lose admin rights"
+                                : "Admin"}
+                            </p>
+                          </div>
                         </div>
                         {admin.isOwner ? (
                           <Badge variant="secondary">Owner</Badge>
@@ -522,7 +535,12 @@ export function RoomManagementModal({
                       key={ban.userId}
                       className="grid grid-cols-[2fr_2fr_180px_120px] gap-3 border-b px-4 py-3 text-sm last:border-b-0"
                     >
-                      <span>{ban.username}</span>
+                      <div className="flex items-center gap-2">
+                        <div className="h-6 w-6 shrink-0 rounded-full overflow-hidden">
+                          <Avatar size={24} name={ban.username} variant="beam" colors={AVATAR_COLORS} />
+                        </div>
+                        <span>{ban.username}</span>
+                      </div>
                       <span>{ban.bannedByUsername ?? "Unknown"}</span>
                       <span>{formatDateTime(ban.createdAt)}</span>
                       <div>
@@ -598,103 +616,125 @@ export function RoomManagementModal({
             {data.room.type !== "direct" && (
               <TabsContent value="settings" className="space-y-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Room name</label>
+                  <Label htmlFor="room-name">Room name</Label>
                   <Input
+                    id="room-name"
                     value={roomName}
                     onChange={(event) => setRoomName(event.target.value)}
                     disabled={!data.room.canDeleteRoom}
+                    onBlur={() => {
+                      if (roomName === data.room.name) return;
+                      actionMutation.mutate({
+                        url: `/api/rooms/${roomId}`,
+                        method: "PATCH",
+                        body: { name: roomName, description: roomDescription, visibility },
+                        successMessage: "Room name updated",
+                      });
+                    }}
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Description</label>
+                  <Label htmlFor="room-desc">Description</Label>
                   <Textarea
+                    id="room-desc"
                     value={roomDescription}
                     onChange={(event) => setRoomDescription(event.target.value)}
                     rows={4}
                     disabled={!data.room.canDeleteRoom}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Visibility</label>
-                  <div className="flex gap-4 text-sm">
-                    {(["public", "private"] as const).map((value) => (
-                      <label key={value} className="flex items-center gap-2">
-                        <input
-                          type="radio"
-                          checked={visibility === value}
-                          disabled={!data.room.canDeleteRoom}
-                          onChange={() => setVisibility(value)}
-                        />
-                        <span className="capitalize">{value}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 pt-2">
-                  <Button
-                    variant="secondary"
-                    disabled={actionMutation.isPending || !data.room.canDeleteRoom}
-                    onClick={() =>
+                    onBlur={() => {
+                      if (roomDescription === (data.room.description ?? "")) return;
                       actionMutation.mutate({
                         url: `/api/rooms/${roomId}`,
                         method: "PATCH",
-                        body: {
-                          name: roomName,
-                          description: roomDescription,
-                          visibility,
-                        },
-                        successMessage: "Room settings updated",
-                      })
-                    }
-                  >
-                    Save changes
-                  </Button>
-
-                  {data.room.canDeleteRoom && (
-                    <Dialog
-                      open={confirmDeleteOpen}
-                      onOpenChange={setConfirmDeleteOpen}
-                    >
-                      <DialogTrigger asChild>
-                        <Button variant="destructive">
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Delete room
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="sm:max-w-md">
-                        <DialogHeader>
-                          <DialogTitle>Delete room?</DialogTitle>
-                        </DialogHeader>
-                        <p className="text-sm text-muted-foreground">
-                          This permanently deletes the room, its messages, and its
-                          attachments.
-                        </p>
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            onClick={() => setConfirmDeleteOpen(false)}
-                          >
-                            Cancel
-                          </Button>
-                          <Button
-                            variant="destructive"
-                            disabled={actionMutation.isPending}
-                            onClick={() =>
-                              actionMutation.mutate({
-                                url: `/api/rooms/${roomId}`,
-                                method: "DELETE",
-                                successMessage: "Room deleted",
-                                redirectAfterDelete: true,
-                              })
-                            }
-                          >
-                            Confirm delete
-                          </Button>
-                        </div>
-                      </DialogContent>
-                    </Dialog>
-                  )}
+                        body: { name: roomName, description: roomDescription, visibility },
+                        successMessage: "Description updated",
+                      });
+                    }}
+                  />
                 </div>
+                <div className="space-y-2">
+                  <Label>Visibility</Label>
+                  <RadioGroup
+                    value={visibility}
+                    onValueChange={(v) => {
+                      const next = v as "public" | "private";
+                      setVisibility(next);
+                      if (next === (data.room.type === "private" ? "private" : "public")) return;
+                      actionMutation.mutate({
+                        url: `/api/rooms/${roomId}`,
+                        method: "PATCH",
+                        body: { name: roomName, description: roomDescription, visibility: next },
+                        successMessage: "Visibility updated",
+                      });
+                    }}
+                    disabled={!data.room.canDeleteRoom}
+                  >
+                    {(["public", "private"] as const).map((value) => (
+                      <div key={value} className="flex items-center gap-2">
+                        <RadioGroupItem value={value} id={`vis-${value}`} />
+                        <Label htmlFor={`vis-${value}`} className="cursor-pointer capitalize font-normal">
+                          {value}
+                        </Label>
+                      </div>
+                    ))}
+                  </RadioGroup>
+                </div>
+
+                {data.room.canDeleteRoom && (
+                  <div className="rounded-md border border-destructive/30 p-4 space-y-3">
+                    <p className="text-sm font-semibold text-destructive">Danger zone</p>
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="space-y-0.5">
+                        <p className="text-sm font-medium">Delete this room</p>
+                        <p className="text-xs text-muted-foreground">
+                          Permanently deletes the room, all its messages, and attachments.
+                        </p>
+                      </div>
+                      <Dialog
+                        open={confirmDeleteOpen}
+                        onOpenChange={setConfirmDeleteOpen}
+                      >
+                        <DialogTrigger asChild>
+                          <Button variant="destructive" size="sm" className="shrink-0">
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete room
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-md">
+                          <DialogHeader>
+                            <DialogTitle>Delete room?</DialogTitle>
+                          </DialogHeader>
+                          <p className="text-sm text-muted-foreground">
+                            This permanently deletes the room, its messages, and its
+                            attachments.
+                          </p>
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              variant="ghost"
+                              onClick={() => setConfirmDeleteOpen(false)}
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              disabled={actionMutation.isPending}
+                              onClick={() =>
+                                actionMutation.mutate({
+                                  url: `/api/rooms/${roomId}`,
+                                  method: "DELETE",
+                                  successMessage: "Room deleted",
+                                  redirectAfterDelete: true,
+                                })
+                              }
+                            >
+                              Confirm delete
+                            </Button>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
+                  </div>
+                )}
               </TabsContent>
             )}
           </Tabs>

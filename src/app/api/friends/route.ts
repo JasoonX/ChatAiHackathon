@@ -49,6 +49,7 @@ export async function GET() {
       .select({
         id: rooms.id,
         directKey: rooms.directKey,
+        createdAt: rooms.createdAt,
       })
       .from(rooms)
       .where(
@@ -72,13 +73,27 @@ export async function GET() {
             and(eq(roomMembers.userId, user.id), inArray(roomMembers.roomId, directRoomIds)),
           )
       : [];
+  const lastMessageRows =
+    directRoomIds.length > 0
+      ? await db
+          .select({
+            roomId: messages.roomId,
+            lastMessageAt: sql<Date>`max(${messages.createdAt})`,
+          })
+          .from(messages)
+          .where(
+            and(inArray(messages.roomId, directRoomIds), isNull(messages.deletedAt)),
+          )
+          .groupBy(messages.roomId)
+      : [];
 
   const friendMap = new Map(friendUsers.map((friendUser) => [friendUser.id, friendUser]));
-  const directRoomMap = new Map(
-    directRooms.map((room) => [room.directKey ?? "", room.id]),
-  );
+  const directRoomMap = new Map(directRooms.map((room) => [room.directKey ?? "", room]));
   const membershipMap = new Map(
     membershipRows.map((membership) => [membership.roomId, membership]),
+  );
+  const lastMessageMap = new Map(
+    lastMessageRows.map((row) => [row.roomId, row.lastMessageAt]),
   );
   const presenceSnapshot = getSnapshot();
 
@@ -86,7 +101,9 @@ export async function GET() {
     friendshipRows.map(async (row) => {
       const friendId = row.userOneId === user.id ? row.userTwoId : row.userOneId;
       const friendUser = friendMap.get(friendId);
-      const directRoomId = directRoomMap.get(getDirectRoomKey(user.id, friendId)) ?? null;
+      const directRoom =
+        directRoomMap.get(getDirectRoomKey(user.id, friendId)) ?? null;
+      const directRoomId = directRoom?.id ?? null;
       const membership = directRoomId ? membershipMap.get(directRoomId) ?? null : null;
 
       let unreadCount = 0;
@@ -118,11 +135,23 @@ export async function GET() {
         directRoomId,
         presence: presenceSnapshot[friendId] ?? "offline",
         unreadCount,
+        lastActivityAt: new Date(
+          (directRoomId ? lastMessageMap.get(directRoomId) : null) ??
+          directRoom?.createdAt ??
+          row.createdAt
+        ).toISOString(),
       };
     }),
   );
 
-  friends.sort((a, b) => a.username.localeCompare(b.username));
+  friends.sort((a, b) => {
+    const byActivity =
+      new Date(b.lastActivityAt).getTime() - new Date(a.lastActivityAt).getTime();
+    if (byActivity !== 0) {
+      return byActivity;
+    }
+    return a.username.localeCompare(b.username);
+  });
 
   return NextResponse.json({ friends });
 }

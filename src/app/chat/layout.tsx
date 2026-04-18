@@ -1,5 +1,6 @@
 "use client";
 
+import Avatar from "boring-avatars";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -53,6 +54,7 @@ import type { PresenceSnapshot, PresenceStatus } from "@/lib/socket";
 import { LogoIcon } from "@/components/logo-icon";
 import { RoomManagementModal } from "@/components/room-management-modal";
 import { Badge } from "@/components/ui/badge";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -94,6 +96,7 @@ type MyRoom = {
   role: "member" | "admin";
   ownerId?: string | null;
   description?: string | null;
+  lastActivityAt?: string;
 };
 
 type PublicRoom = {
@@ -114,6 +117,7 @@ type Friend = {
   directRoomId: string | null;
   presence: Presence;
   unreadCount: number;
+  lastActivityAt: string;
 };
 
 type FriendRequest = {
@@ -161,7 +165,7 @@ type ChangePasswordForm = z.infer<typeof changePasswordSchema>;
 // Presence dot
 // ---------------------------------------------------------------------------
 
-function PresenceDot({ status }: { status: Presence }) {
+function PresenceDot({ status, className = "" }: { status: Presence; className?: string }) {
   const color = {
     online: "bg-success",
     afk: "bg-warning",
@@ -170,11 +174,13 @@ function PresenceDot({ status }: { status: Presence }) {
 
   return (
     <span
-      className={`inline-block h-2 w-2 shrink-0 rounded-full ${color}`}
+      className={`inline-block h-2 w-2 shrink-0 rounded-full ${color} ${className}`}
       title={status}
     />
   );
 }
+
+const AVATAR_COLORS = ["#C0634A", "#6B5B93", "#2D7DD2", "#52B788", "#E09B3D"];
 
 // ---------------------------------------------------------------------------
 // Collapsible section
@@ -185,11 +191,15 @@ function SidebarSection({
   defaultOpen = true,
   action,
   children,
+  maxBodyHeightClassName,
+  footer,
 }: {
   title: string;
   defaultOpen?: boolean;
   action?: React.ReactNode;
   children: React.ReactNode;
+  maxBodyHeightClassName?: string;
+  footer?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
 
@@ -210,7 +220,19 @@ function SidebarSection({
         </button>
         {action}
       </div>
-      {open && <div className="space-y-0.5 px-1">{children}</div>}
+      {open &&
+        (maxBodyHeightClassName ? (
+          <div
+            className={`${maxBodyHeightClassName} overflow-y-auto overscroll-contain px-1`}
+          >
+            <div className="space-y-0.5">
+              {children}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-0.5 px-1">{children}</div>
+        ))}
+      {open && footer ? <div className="px-1 pt-1">{footer}</div> : null}
     </div>
   );
 }
@@ -313,7 +335,12 @@ function ContactItem({
         href={href}
         className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5"
       >
-        <PresenceDot status={presence} />
+        <div className="relative shrink-0">
+          <div className="h-5 w-5 rounded-full overflow-hidden">
+            <Avatar size={20} name={name} variant="beam" colors={AVATAR_COLORS} />
+          </div>
+          <PresenceDot status={presence} className="absolute -bottom-0.5 -right-0.5 ring-1 ring-background" />
+        </div>
         <span className="truncate">{name}</span>
       </Link>
       <div className="shrink-0 pr-1 flex items-center justify-end min-w-[28px]">
@@ -379,7 +406,12 @@ function MemberItem({
 
   return (
     <div className="flex items-center gap-2 px-3 py-1.5">
-      <PresenceDot status={presence} />
+      <div className="relative shrink-0">
+        <div className="h-6 w-6 rounded-full overflow-hidden">
+          <Avatar size={24} name={name} variant="beam" colors={AVATAR_COLORS} />
+        </div>
+        <PresenceDot status={presence} className="absolute -bottom-0.5 -right-0.5 ring-1 ring-background" />
+      </div>
       <span className="flex-1 truncate text-[13px]">
         {name}
         {isCurrentUser && (
@@ -524,8 +556,13 @@ function CreateRoomDialog({
                   <FormControl>
                     <Textarea
                       placeholder="Optional description"
-                      className="resize-none"
+                      className="resize-none min-h-[60px] max-h-[160px] overflow-y-auto"
                       rows={2}
+                      onInput={(e) => {
+                        const el = e.currentTarget;
+                        el.style.height = "auto";
+                        el.style.height = el.scrollHeight + "px";
+                      }}
                       {...field}
                     />
                   </FormControl>
@@ -541,31 +578,30 @@ function CreateRoomDialog({
                 <FormItem>
                   <FormLabel>Type</FormLabel>
                   <FormControl>
-                    <div className="flex gap-4">
+                    <RadioGroup
+                      value={field.value}
+                      onValueChange={field.onChange}
+                    >
                       {(["public", "private"] as const).map((t) => (
-                        <label
-                          key={t}
-                          className="flex items-center gap-2 cursor-pointer text-[13px]"
-                        >
-                          <input
-                            type="radio"
-                            value={t}
-                            checked={field.value === t}
-                            onChange={() => field.onChange(t)}
-                            className="accent-primary"
-                          />
-                          {t === "public" ? (
-                            <span className="flex items-center gap-1">
-                              <Hash className="h-3.5 w-3.5" /> Public
-                            </span>
-                          ) : (
-                            <span className="flex items-center gap-1">
-                              <Lock className="h-3.5 w-3.5" /> Private
-                            </span>
-                          )}
-                        </label>
+                        <div key={t} className="flex items-center gap-2">
+                          <RadioGroupItem value={t} id={`create-type-${t}`} />
+                          <label
+                            htmlFor={`create-type-${t}`}
+                            className="flex items-center gap-1 cursor-pointer text-[13px]"
+                          >
+                            {t === "public" ? (
+                              <>
+                                <Hash className="h-3.5 w-3.5" /> Public
+                              </>
+                            ) : (
+                              <>
+                                <Lock className="h-3.5 w-3.5" /> Private
+                              </>
+                            )}
+                          </label>
+                        </div>
                       ))}
-                    </div>
+                    </RadioGroup>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -1227,6 +1263,7 @@ function FriendRequestsBell({
                   className="rounded-md border bg-card p-3 space-y-2 animate-pulse"
                 >
                   <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 shrink-0 rounded-full bg-muted" />
                     <div className="flex-1 space-y-1.5">
                       <div
                         className="h-3 rounded bg-muted"
@@ -1253,6 +1290,9 @@ function FriendRequestsBell({
                   className="rounded-md border bg-card p-3 space-y-2"
                 >
                   <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 shrink-0 rounded-full overflow-hidden">
+                      <Avatar size={32} name={request.requesterUsername} variant="beam" colors={AVATAR_COLORS} />
+                    </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-[13px] font-medium truncate">
                         {request.requesterUsername}
@@ -1979,7 +2019,7 @@ function SidebarSkeletonRows({ count = 3 }: { count?: number }) {
           key={i}
           className="flex items-center gap-2 px-2 py-1.5 rounded-md animate-pulse"
         >
-          <div className="h-3.5 w-3.5 shrink-0 rounded bg-muted" />
+          <div className="h-5 w-5 shrink-0 rounded-full bg-muted" />
           <div
             className="h-3 rounded bg-muted"
             style={{ width: `${55 + ((i * 17) % 35)}%` }}
@@ -2354,6 +2394,8 @@ function RoomsSidebar({
             action={
               <CreateRoomDialog onSuccess={invalidateRooms} trigger="icon" />
             }
+            maxBodyHeightClassName="max-h-[42vh] min-h-0"
+            footer={<BrowseRoomsDialog onJoined={invalidateRooms} />}
           >
             {isLoadingRooms ? (
               <SidebarSkeletonRows count={3} />
@@ -2381,7 +2423,6 @@ function RoomsSidebar({
                 />
               ))
             )}
-            <BrowseRoomsDialog onJoined={invalidateRooms} />
           </SidebarSection>
 
           <SidebarSection
@@ -2393,6 +2434,7 @@ function RoomsSidebar({
                 defaultType="private"
               />
             }
+            maxBodyHeightClassName="max-h-[24vh] min-h-0"
           >
             {isLoadingRooms ? (
               <SidebarSkeletonRows count={2} />
@@ -2438,6 +2480,7 @@ function RoomsSidebar({
                 }}
               />
             }
+            maxBodyHeightClassName="max-h-[24vh] min-h-0"
           >
             {isLoadingFriends ? (
               <SidebarSkeletonRows count={4} />
@@ -2515,8 +2558,13 @@ function RoomsSidebar({
         <InvitationBell socket={socket} />
         <Separator className="my-1 -mx-1 w-auto" />
         <div className="flex items-center gap-2 px-2 py-1.5 rounded-md">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[12px] font-semibold text-primary">
-            {(currentUsername || currentEmail).slice(0, 1).toUpperCase()}
+          <div className="h-7 w-7 shrink-0 rounded-full overflow-hidden">
+            <Avatar
+              size={28}
+              name={currentUsername || currentEmail}
+              variant="beam"
+              colors={AVATAR_COLORS}
+            />
           </div>
           <div className="flex min-w-0 flex-1 flex-col">
             {currentUsername && (
@@ -2750,7 +2798,7 @@ function ContextPanel({
                   key={i}
                   className="flex items-center gap-2 px-3 py-1.5 animate-pulse"
                 >
-                  <div className="h-2 w-2 shrink-0 rounded-full bg-muted" />
+                  <div className="h-6 w-6 shrink-0 rounded-full bg-muted" />
                   <div
                     className="h-3 rounded bg-muted"
                     style={{ width: `${45 + ((i * 19) % 30)}%` }}
@@ -2901,6 +2949,9 @@ export default function ChatLayout({
       void queryClient.invalidateQueries({ queryKey: ["my-rooms"] });
     };
     const onNewMessage = ({ roomId }: { roomId: string }) => {
+      void queryClient.invalidateQueries({ queryKey: ["my-rooms"] });
+      void queryClient.invalidateQueries({ queryKey: ["friends"] });
+
       if (roomId === activeRoomId) {
         clearUnread(roomId);
         return;
