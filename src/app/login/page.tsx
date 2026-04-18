@@ -1,6 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -12,8 +15,12 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { authClient } from "@/lib/auth-client";
 
 export default function LoginPage() {
+  const router = useRouter();
+  const [isPending, setIsPending] = useState(false);
+
   return (
     <main className="flex min-h-screen items-center justify-center px-4">
       <Card className="w-full max-w-sm">
@@ -27,9 +34,30 @@ export default function LoginPage() {
         </CardHeader>
         <CardContent>
           <form
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault();
-              console.log("login submitted");
+              setIsPending(true);
+
+              const formData = new FormData(e.currentTarget);
+              const email = String(formData.get("email") ?? "");
+              const password = String(formData.get("password") ?? "");
+              const rememberMe = formData.get("remember") === "on";
+
+              const { error } = await authClient.signIn.email({
+                email,
+                password,
+                rememberMe,
+              });
+
+              setIsPending(false);
+
+              if (error) {
+                toast.error(error.message ?? "Unable to sign in");
+                return;
+              }
+
+              router.replace("/chat");
+              router.refresh();
             }}
             className="space-y-4"
           >
@@ -37,9 +65,11 @@ export default function LoginPage() {
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
+                name="email"
                 type="email"
                 placeholder="you@example.com"
                 autoComplete="email"
+                required
               />
             </div>
 
@@ -47,9 +77,11 @@ export default function LoginPage() {
               <Label htmlFor="password">Password</Label>
               <Input
                 id="password"
+                name="password"
                 type="password"
                 placeholder="••••••••"
                 autoComplete="current-password"
+                required
               />
             </div>
 
@@ -60,7 +92,9 @@ export default function LoginPage() {
               >
                 <input
                   id="remember"
+                  name="remember"
                   type="checkbox"
+                  defaultChecked
                   className="h-4 w-4 rounded border-input bg-secondary accent-primary"
                 />
                 Keep me signed in
@@ -73,8 +107,8 @@ export default function LoginPage() {
               </Link>
             </div>
 
-            <Button type="submit" className="w-full">
-              Sign in
+            <Button type="submit" className="w-full" disabled={isPending}>
+              {isPending ? "Signing in..." : "Sign in"}
             </Button>
           </form>
 

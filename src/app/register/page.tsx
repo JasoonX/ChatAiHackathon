@@ -1,8 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useState } from "react";
+import { toast } from "sonner";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
@@ -22,6 +25,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { authClient } from "@/lib/auth-client";
 
 const registerSchema = z
   .object({
@@ -45,6 +49,8 @@ const registerSchema = z
 type RegisterValues = z.infer<typeof registerSchema>;
 
 export default function RegisterPage() {
+  const router = useRouter();
+  const [isPending, setIsPending] = useState(false);
   const form = useForm<RegisterValues>({
     resolver: zodResolver(registerSchema),
     defaultValues: {
@@ -55,8 +61,25 @@ export default function RegisterPage() {
     },
   });
 
-  function onSubmit(values: RegisterValues) {
-    console.log("register submitted", values);
+  async function onSubmit(values: RegisterValues) {
+    setIsPending(true);
+
+    const { error } = await authClient.signUp.email({
+      email: values.email,
+      name: values.username,
+      password: values.password,
+      username: values.username,
+    });
+
+    setIsPending(false);
+
+    if (error) {
+      toast.error(error.message ?? "Unable to create account");
+      return;
+    }
+
+    router.replace("/chat");
+    router.refresh();
   }
 
   return (
@@ -151,8 +174,8 @@ export default function RegisterPage() {
                 )}
               />
 
-              <Button type="submit" className="w-full">
-                Create account
+              <Button type="submit" className="w-full" disabled={isPending}>
+                {isPending ? "Creating account..." : "Create account"}
               </Button>
             </form>
           </Form>

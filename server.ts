@@ -4,6 +4,8 @@ import { parse } from "node:url";
 import next from "next";
 import { Server as SocketIOServer } from "socket.io";
 
+import { socketAuthMiddleware } from "./src/lib/socket-auth";
+
 const dev = process.env.NODE_ENV !== "production";
 const port = Number.parseInt(process.env.PORT ?? "3000", 10);
 const hostname = "0.0.0.0";
@@ -29,8 +31,15 @@ async function bootstrap() {
     },
   });
 
+  io.use(socketAuthMiddleware);
+
   io.on("connection", (socket) => {
-    socket.emit("hello", { message: "socket.io connected" });
+    const { userId, username } = socket.data;
+    console.log(`User connected: ${userId} (${username})`);
+
+    socket.on("disconnect", () => {
+      console.log(`User disconnected: ${userId} (${username})`);
+    });
   });
 
   const close = async (signal: NodeJS.Signals) => {

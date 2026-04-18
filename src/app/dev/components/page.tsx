@@ -1,6 +1,8 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
+import { Hash, Lock, MessageSquare } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -393,6 +395,116 @@ export default function ComponentsPage() {
               Monospace: JetBrains Mono
             </p>
           </div>
+        </Section>
+
+        {/* Presence Dots */}
+        <Section title="Presence Dots">
+          <Row label="states">
+            <div className="flex items-center gap-2">
+              <span className="inline-block h-2 w-2 rounded-full bg-success" />
+              <span className="text-sm">Online</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="inline-block h-2 w-2 rounded-full bg-warning" />
+              <span className="text-sm">AFK</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="inline-block h-2 w-2 rounded-full bg-muted-foreground/40" />
+              <span className="text-sm">Offline</span>
+            </div>
+          </Row>
+        </Section>
+
+        {/* Sidebar Items */}
+        <Section title="Sidebar Items">
+          <Row label="room items">
+            <div className="w-full max-w-xs space-y-0.5 rounded-lg border bg-card p-2">
+              {[
+                { name: "general", icon: Hash, unread: 3 },
+                { name: "engineering", icon: Hash, unread: 0 },
+                { name: "core-team", icon: Lock, unread: 1 },
+              ].map((room) => (
+                <div
+                  key={room.name}
+                  className="flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors cursor-pointer"
+                >
+                  <room.icon className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{room.name}</span>
+                  {room.unread > 0 && (
+                    <Badge variant="default" className="ml-auto text-[10px] px-1.5 py-0">
+                      {room.unread}
+                    </Badge>
+                  )}
+                </div>
+              ))}
+            </div>
+          </Row>
+          <Row label="contact items">
+            <div className="w-full max-w-xs space-y-0.5 rounded-lg border bg-card p-2">
+              {[
+                { name: "Alice", presence: "bg-success", unread: 0 },
+                { name: "Bob", presence: "bg-warning", unread: 0 },
+                { name: "Carol", presence: "bg-muted-foreground/40", unread: 2 },
+              ].map((c) => (
+                <div
+                  key={c.name}
+                  className="flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors cursor-pointer"
+                >
+                  <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${c.presence}`} />
+                  <span className="truncate">{c.name}</span>
+                  {c.unread > 0 && (
+                    <Badge variant="default" className="ml-auto text-[10px] px-1.5 py-0">
+                      {c.unread}
+                    </Badge>
+                  )}
+                </div>
+              ))}
+            </div>
+          </Row>
+        </Section>
+
+        {/* Member List Items */}
+        <Section title="Member List Items">
+          <Row label="with roles and presence">
+            <div className="w-full max-w-xs space-y-1 rounded-lg border bg-card p-2">
+              {[
+                { name: "Alice", role: "owner", presence: "bg-success", variant: "warning" as const },
+                { name: "Dave", role: "admin", presence: "bg-success", variant: "info" as const },
+                { name: "Bob", role: null, presence: "bg-warning", variant: null },
+                { name: "Mike", role: null, presence: "bg-muted-foreground/40", variant: null },
+              ].map((m) => (
+                <div key={m.name} className="flex items-center gap-2 px-3 py-1.5">
+                  <Avatar className="h-7 w-7">
+                    <AvatarFallback className="text-[11px]">
+                      {m.name.slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="flex-1 truncate text-[13px]">{m.name}</span>
+                  {m.role && (
+                    <Badge variant={m.variant!} className="text-[10px] px-1.5 py-0">
+                      {m.role}
+                    </Badge>
+                  )}
+                  <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${m.presence}`} />
+                </div>
+              ))}
+            </div>
+          </Row>
+        </Section>
+
+        {/* Page Links */}
+        <Section title="Page Previews">
+          <Row label="auth & chat pages">
+            <Button asChild variant="secondary" size="sm">
+              <Link href="/login">Login</Link>
+            </Button>
+            <Button asChild variant="secondary" size="sm">
+              <Link href="/register">Register</Link>
+            </Button>
+            <Button asChild variant="secondary" size="sm">
+              <Link href="/chat">Chat Layout</Link>
+            </Button>
+          </Row>
         </Section>
 
         <div className="pb-16" />

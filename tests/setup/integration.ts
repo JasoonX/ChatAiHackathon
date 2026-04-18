@@ -45,34 +45,28 @@ async function getState() {
 }
 
 export let db: TestDb;
+const initialState = await getState();
+
+process.env.DATABASE_URL = initialState.container.getConnectionUri();
+db = initialState.db;
 
 export async function resetDb() {
   const state = await getState();
-  const connectionUri = state.container.getConnectionUri();
 
   await state.client.unsafe(`
     drop schema if exists public cascade;
+    drop schema if exists drizzle cascade;
     create schema public;
     grant all on schema public to postgres;
     grant all on schema public to public;
   `);
 
-  await state.client.end();
-
-  const client = postgres(connectionUri, {
-    prepare: false,
-  });
-
-  state.client = client;
-  state.db = drizzle(client, { schema });
-  db = state.db;
   await migrate(state.db, { migrationsFolder: "drizzle" });
 }
 
 beforeAll(async () => {
-  const state = await getState();
-  process.env.DATABASE_URL = state.container.getConnectionUri();
-  db = state.db;
+  process.env.DATABASE_URL = initialState.container.getConnectionUri();
+  db = initialState.db;
   await resetDb();
 });
 
