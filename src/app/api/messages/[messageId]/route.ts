@@ -95,6 +95,7 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
       image: sender.image,
     },
     replyTo: null as null, // reply-to doesn't change on edit
+    attachments: [],
   };
 
   // Broadcast via socket

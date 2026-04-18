@@ -4,8 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Download,
+  FileIcon,
   Hash,
+  Image as ImageIcon,
   MoreHorizontal,
+  Paperclip,
   Pencil,
   Reply,
   Send,
@@ -25,7 +29,123 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useSocket } from "@/hooks/use-socket";
 import { authClient } from "@/lib/auth-client";
-import type { MessagePayload } from "@/lib/socket";
+import type { AttachmentPayload, MessagePayload } from "@/lib/socket";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// ---------------------------------------------------------------------------
+// Attachment display (inside message bubble)
+// ---------------------------------------------------------------------------
+
+function AttachmentDisplay({ attachment }: { attachment: AttachmentPayload }) {
+  const isImage = attachment.mimeType.startsWith("image/");
+  const downloadUrl = `/api/attachments/${attachment.id}`;
+
+  if (isImage) {
+    return (
+      <div className="mt-1.5">
+        <a
+          href={downloadUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block max-w-xs rounded-md overflow-hidden border border-border/60 hover:border-border transition-colors"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={downloadUrl}
+            alt={attachment.originalFilename}
+            className="max-h-60 w-auto object-contain"
+            loading="lazy"
+          />
+        </a>
+        <p className="mt-0.5 text-[11px] text-muted-foreground">
+          {attachment.originalFilename} · {formatFileSize(attachment.byteSize)}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-1.5 flex items-center gap-2 rounded-md border border-border/60 bg-muted/30 px-3 py-2 max-w-xs">
+      <FileIcon className="h-5 w-5 shrink-0 text-muted-foreground" />
+      <div className="flex-1 min-w-0">
+        <p className="text-[13px] font-medium truncate">
+          {attachment.originalFilename}
+        </p>
+        <p className="text-[11px] text-muted-foreground">
+          {formatFileSize(attachment.byteSize)}
+        </p>
+      </div>
+      <a
+        href={downloadUrl}
+        download={attachment.originalFilename}
+        className="shrink-0 rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+        title="Download"
+      >
+        <Download className="h-4 w-4" />
+      </a>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Attachment preview (before sending)
+// ---------------------------------------------------------------------------
+
+function AttachmentPreview({
+  file,
+  onRemove,
+}: {
+  file: File;
+  onRemove: () => void;
+}) {
+  const isImage = file.type.startsWith("image/");
+  const [preview, setPreview] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isImage) return;
+    const url = URL.createObjectURL(file);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file, isImage]);
+
+  return (
+    <div className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/30 px-3 py-2">
+      {isImage && preview ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={preview}
+          alt={file.name}
+          className="h-10 w-10 rounded object-cover shrink-0"
+        />
+      ) : (
+        <FileIcon className="h-5 w-5 shrink-0 text-muted-foreground" />
+      )}
+      <div className="flex-1 min-w-0">
+        <p className="text-[13px] truncate">{file.name}</p>
+        <p className="text-[11px] text-muted-foreground">
+          {formatFileSize(file.size)}
+        </p>
+      </div>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
+        onClick={onRemove}
+      >
+        <X className="h-3.5 w-3.5" />
+      </Button>
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Message bubble
@@ -114,9 +234,15 @@ function MessageBubble({
           </div>
         )}
 
-        <p className="text-[13px] leading-relaxed text-foreground/90 whitespace-pre-wrap break-words">
-          {message.content ?? ""}
-        </p>
+        {message.content && (
+          <p className="text-[13px] leading-relaxed text-foreground/90 whitespace-pre-wrap break-words">
+            {message.content}
+          </p>
+        )}
+
+        {message.attachments?.map((att) => (
+          <AttachmentDisplay key={att.id} attachment={att} />
+        ))}
       </div>
 
       {showMenu && (
@@ -343,11 +469,14 @@ export default function RoomPage() {
   const [sending, setSending] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<MessagePayload | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const isAtBottomRef = useRef(true);
   const initialLoadedRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Get room info from sidebar query (reactive)
   const { data: cachedRooms } = useQuery({
@@ -583,15 +712,92 @@ export default function RoomPage() {
     );
   }, [socket, roomId, input, sending, replyTo]);
 
+  // -------------------------------------------------------------------------
+  // Upload attachment
+  // -------------------------------------------------------------------------
+
+  const uploadFile = useCallback(async () => {
+    if (!pendingFile || uploading) return;
+    setUploading(true);
+
+    const formData = new FormData();
+    formData.append("file", pendingFile);
+    const comment = input.trim();
+    if (comment) formData.append("comment", comment);
+
+    try {
+      const res = await fetch(`/api/rooms/${roomId}/upload`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const err = (await res.json()) as { error?: string };
+        toast.error(err.error ?? "Upload failed");
+        return;
+      }
+
+      // The upload endpoint broadcasts via socket, so the message will
+      // appear via the message:new listener. Just clear the input.
+      setInput("");
+      setPendingFile(null);
+    } catch {
+      toast.error("Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  }, [pendingFile, uploading, input, roomId]);
+
+  const handleSend = useCallback(() => {
+    if (pendingFile) {
+      void uploadFile();
+    } else {
+      sendMessage();
+    }
+  }, [pendingFile, uploadFile, sendMessage]);
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      handleSend();
     }
-    if (e.key === "Escape" && replyTo) {
-      setReplyTo(null);
+    if (e.key === "Escape") {
+      if (pendingFile) {
+        setPendingFile(null);
+      } else if (replyTo) {
+        setReplyTo(null);
+      }
     }
   };
+
+  // -------------------------------------------------------------------------
+  // Paste handler (auto-attach images)
+  // -------------------------------------------------------------------------
+
+  const handlePaste = useCallback(
+    (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      const items = e.clipboardData.items;
+      for (const item of items) {
+        if (item.type.startsWith("image/")) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          if (file) setPendingFile(file);
+          return;
+        }
+      }
+    },
+    [],
+  );
+
+  const handleFileSelect = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) setPendingFile(file);
+      // Reset input so same file can be re-selected
+      e.target.value = "";
+    },
+    [],
+  );
 
   // -------------------------------------------------------------------------
   // Edit message
@@ -747,23 +953,50 @@ export default function RoomPage() {
         </div>
       )}
 
+      {/* Attachment preview */}
+      {pendingFile && (
+        <div className="px-4 pt-2 shrink-0">
+          <AttachmentPreview
+            file={pendingFile}
+            onRemove={() => setPendingFile(null)}
+          />
+        </div>
+      )}
+
       {/* Input area */}
       <div className="px-4 py-3 border-t border-border/60 shrink-0">
         <div className="flex items-end gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            onChange={handleFileSelect}
+          />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-10 w-10 shrink-0 text-muted-foreground hover:text-foreground"
+            title="Attach file"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+          >
+            <Paperclip className="h-4 w-4" />
+          </Button>
           <Textarea
             ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Message..."
+            onPaste={handlePaste}
+            placeholder={pendingFile ? "Add a comment…" : "Message..."}
             className="min-h-[40px] max-h-32 resize-none flex-1"
             rows={1}
-            disabled={sending}
+            disabled={sending || uploading}
           />
           <Button
             size="icon"
-            disabled={!input.trim() || sending}
-            onClick={sendMessage}
+            disabled={(!input.trim() && !pendingFile) || sending || uploading}
+            onClick={handleSend}
             className="h-10 w-10 shrink-0"
             title="Send"
           >
@@ -771,7 +1004,7 @@ export default function RoomPage() {
           </Button>
         </div>
         <p className="mt-1 text-[11px] text-muted-foreground">
-          Enter to send · Shift+Enter for newline
+          Enter to send · Shift+Enter for newline · Paste image to attach
         </p>
       </div>
     </div>

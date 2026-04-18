@@ -181,6 +181,7 @@ async function bootstrap() {
               image: sender.image,
             },
             replyTo,
+            attachments: [],
           };
 
           await socket.join(roomId);
@@ -207,6 +208,7 @@ async function bootstrap() {
             image: sender.image,
           },
           replyTo: null,
+          attachments: [],
         };
 
         // 7. Ensure sender's socket is in the channel, then broadcast

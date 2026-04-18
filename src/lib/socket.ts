@@ -11,6 +11,17 @@ export type ReplyPreview = {
   sender: { username: string };
 } | null;
 
+export type AttachmentPayload = {
+  id: string;
+  storageKey: string;
+  originalFilename: string;
+  mimeType: string;
+  byteSize: number;
+  imageWidth: number | null;
+  imageHeight: number | null;
+  comment: string | null;
+};
+
 export type MessagePayload = {
   id: string;
   roomId: string;
@@ -20,6 +31,7 @@ export type MessagePayload = {
   deletedAt: string | null;
   sender: MessageSender;
   replyTo: ReplyPreview;
+  attachments: AttachmentPayload[];
 };
 
 export type PresenceStatus = "online" | "afk" | "offline";
@@ -39,6 +51,13 @@ export type InvitationPayload = {
   createdAt: string;
 };
 
+export type RoomUpdatedPayload = {
+  roomId: string;
+  name: string;
+  description: string | null;
+  type: "public" | "private" | "direct";
+};
+
 export type ServerToClientEvents = {
   hello: (payload: { message: string }) => void;
   "room:member-joined": (payload: {
@@ -56,6 +75,23 @@ export type ServerToClientEvents = {
   "invitation:received": (payload: InvitationPayload) => void;
   "presence:update": (payload: PresenceUpdate) => void;
   "presence:snapshot": (payload: PresenceSnapshot) => void;
+  "room:member-banned": (payload: {
+    roomId: string;
+    userId: string;
+    bannedByUserId: string;
+    createdAt: string;
+  }) => void;
+  "room:ban-removed": (payload: {
+    roomId: string;
+    userId: string;
+  }) => void;
+  "room:admin-updated": (payload: {
+    roomId: string;
+    userId: string;
+    role: "admin" | "member";
+  }) => void;
+  "room:updated": (payload: RoomUpdatedPayload) => void;
+  "room:deleted": (payload: { roomId: string }) => void;
 };
 
 export type ClientToServerEvents = {

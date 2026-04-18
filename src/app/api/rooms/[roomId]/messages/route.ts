@@ -2,11 +2,11 @@ import { and, desc, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
 import { db } from "@/db";
-import { messages } from "@/db/schema/messages";
+import { attachments, messages } from "@/db/schema/messages";
 import { roomMembers } from "@/db/schema/rooms";
 import { users } from "@/db/schema/users";
 import { getCurrentUser } from "@/server/auth";
-import type { MessagePayload, ReplyPreview } from "@/lib/socket";
+import type { AttachmentPayload, MessagePayload, ReplyPreview } from "@/lib/socket";
 
 export async function GET(
   req: NextRequest,
@@ -128,6 +128,42 @@ export async function GET(
     }
   }
 
+  // Batch-fetch attachments for these messages
+  const messageIds = results.map((r) => r.id);
+  const attachmentMap = new Map<string, AttachmentPayload[]>();
+
+  if (messageIds.length > 0) {
+    const attachmentRows = await db
+      .select({
+        id: attachments.id,
+        messageId: attachments.messageId,
+        storageKey: attachments.storageKey,
+        originalFilename: attachments.originalFilename,
+        mimeType: attachments.mimeType,
+        byteSize: attachments.byteSize,
+        imageWidth: attachments.imageWidth,
+        imageHeight: attachments.imageHeight,
+        comment: attachments.comment,
+      })
+      .from(attachments)
+      .where(inArray(attachments.messageId, messageIds));
+
+    for (const a of attachmentRows) {
+      const list = attachmentMap.get(a.messageId) ?? [];
+      list.push({
+        id: a.id,
+        storageKey: a.storageKey,
+        originalFilename: a.originalFilename,
+        mimeType: a.mimeType,
+        byteSize: a.byteSize,
+        imageWidth: a.imageWidth,
+        imageHeight: a.imageHeight,
+        comment: a.comment,
+      });
+      attachmentMap.set(a.messageId, list);
+    }
+  }
+
   const mapped: MessagePayload[] = results.map((row) => ({
     id: row.id,
     roomId: row.roomId,
@@ -144,6 +180,7 @@ export async function GET(
     replyTo: row.replyToMessageId
       ? replyMap.get(row.replyToMessageId) ?? null
       : null,
+    attachments: attachmentMap.get(row.id) ?? [],
   }));
 
   // nextCursor is the oldest message ID in the batch (first after reversing)
