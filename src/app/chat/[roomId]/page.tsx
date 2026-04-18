@@ -5,6 +5,8 @@ import { useParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDown,
+  ChevronLeft,
+  ChevronRight,
   Download,
   FileIcon,
   Hash,
@@ -50,27 +52,40 @@ function formatFileSize(bytes: number): string {
 // ---------------------------------------------------------------------------
 
 function ImageLightbox({
-  src,
-  alt,
+  images,
+  initialIndex,
   onClose,
 }: {
-  src: string;
-  alt: string;
+  images: { src: string; alt: string }[];
+  initialIndex: number;
   onClose: () => void;
 }) {
+  const [index, setIndex] = useState(initialIndex);
+  const total = images.length;
+  const hasPrev = index > 0;
+  const hasNext = index < total - 1;
+
+  const prev = useCallback(() => setIndex((i) => Math.max(0, i - 1)), []);
+  const next = useCallback(() => setIndex((i) => Math.min(total - 1, i + 1)), [total]);
+
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
+      if (e.key === "ArrowLeft") prev();
+      if (e.key === "ArrowRight") next();
     };
     document.addEventListener("keydown", handleKey);
     return () => document.removeEventListener("keydown", handleKey);
-  }, [onClose]);
+  }, [onClose, prev, next]);
+
+  const current = images[index];
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
       onClick={onClose}
     >
+      {/* Close */}
       <button
         type="button"
         onClick={onClose}
@@ -79,54 +94,60 @@ function ImageLightbox({
       >
         <X className="h-4 w-4" />
       </button>
+
+      {/* Counter */}
+      {total > 1 && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-3 py-1 text-[12px] text-white">
+          {index + 1} / {total}
+        </div>
+      )}
+
+      {/* Prev */}
+      {hasPrev && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); prev(); }}
+          className="absolute left-4 flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
+          aria-label="Previous image"
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </button>
+      )}
+
+      {/* Image */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={src}
-        alt={alt}
+        key={current.src}
+        src={current.src}
+        alt={current.alt}
         className="max-h-[90vh] max-w-[90vw] rounded-md object-contain shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       />
+
+      {/* Next */}
+      {hasNext && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); next(); }}
+          className="absolute right-4 flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
+          aria-label="Next image"
+        >
+          <ChevronRight className="h-5 w-5" />
+        </button>
+      )}
+
+      {/* Filename */}
+      <p className="absolute bottom-4 left-1/2 -translate-x-1/2 text-[12px] text-white/70 truncate max-w-[60vw] text-center">
+        {current.alt}
+      </p>
     </div>
   );
 }
 
-function AttachmentDisplay({ attachment }: { attachment: AttachmentPayload }) {
-  const isImage = attachment.mimeType.startsWith("image/");
+function FileAttachmentRow({ attachment }: { attachment: AttachmentPayload }) {
   const downloadUrl = `/api/attachments/${attachment.id}`;
-  const [lightboxOpen, setLightboxOpen] = useState(false);
-
-  if (isImage) {
-    return (
-      <div className="mt-1.5">
-        <button
-          type="button"
-          onClick={() => setLightboxOpen(true)}
-          className="block w-fit rounded-md overflow-hidden border border-border/60 hover:border-border transition-colors cursor-zoom-in"
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={downloadUrl}
-            alt={attachment.originalFilename}
-            className="max-h-60 max-w-xs w-auto object-contain"
-            loading="lazy"
-          />
-        </button>
-        <p className="mt-0.5 text-[11px] text-muted-foreground">
-          {attachment.originalFilename} · {formatFileSize(attachment.byteSize)}
-        </p>
-        {lightboxOpen && (
-          <ImageLightbox
-            src={downloadUrl}
-            alt={attachment.originalFilename}
-            onClose={() => setLightboxOpen(false)}
-          />
-        )}
-      </div>
-    );
-  }
-
   return (
-    <div className="mt-1.5 flex items-center gap-2 rounded-md border border-border/60 bg-muted/30 px-3 py-2 max-w-xs">
+    <div className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/30 px-3 py-2 max-w-xs">
       <FileIcon className="h-5 w-5 shrink-0 text-muted-foreground" />
       <div className="flex-1 min-w-0">
         <p className="text-[13px] font-medium truncate">
@@ -144,6 +165,97 @@ function AttachmentDisplay({ attachment }: { attachment: AttachmentPayload }) {
       >
         <Download className="h-4 w-4" />
       </a>
+    </div>
+  );
+}
+
+function AttachmentGroup({ attachments }: { attachments: AttachmentPayload[] }) {
+  const images = attachments.filter((a) => a.mimeType.startsWith("image/"));
+  const files = attachments.filter((a) => !a.mimeType.startsWith("image/"));
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+
+  const visibleImages = images.slice(0, 4);
+  const overflow = images.length - 4;
+
+  return (
+    <div className="mt-1.5 space-y-1.5">
+      {/* Single image — natural aspect ratio */}
+      {images.length === 1 && (
+        <div>
+          <button
+            type="button"
+            onClick={() => setLightboxIndex(0)}
+            className="block w-fit rounded-md overflow-hidden border border-border/60 hover:border-border transition-colors cursor-zoom-in"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`/api/attachments/${images[0].id}`}
+              alt={images[0].originalFilename}
+              className="max-h-60 max-w-xs w-auto object-contain"
+              loading="lazy"
+            />
+          </button>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            {images[0].originalFilename} · {formatFileSize(images[0].byteSize)}
+          </p>
+        </div>
+      )}
+
+      {/* Multiple images — square grid, max 4 cells */}
+      {images.length >= 2 && (
+        <div
+          className="grid gap-0.5 rounded-md overflow-hidden border border-border/60 w-fit"
+          style={{
+            gridTemplateColumns: `repeat(${Math.min(images.length, 2)}, 128px)`,
+          }}
+        >
+          {visibleImages.map((img, i) => {
+            const isOverflowCell = i === 3 && overflow > 0;
+            return (
+              <button
+                key={img.id}
+                type="button"
+                onClick={() => setLightboxIndex(isOverflowCell ? 3 : i)}
+                className="relative cursor-zoom-in overflow-hidden"
+                style={{ width: 128, height: 128 }}
+                title={isOverflowCell ? `View all ${images.length} images` : img.originalFilename}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`/api/attachments/${img.id}`}
+                  alt={img.originalFilename}
+                  className="absolute inset-0 h-full w-full object-cover"
+                  loading="lazy"
+                />
+                {isOverflowCell && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/55">
+                    <span className="text-white text-lg font-semibold">
+                      +{overflow + 1}
+                    </span>
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* File attachments */}
+      {files.map((att) => (
+        <FileAttachmentRow key={att.id} attachment={att} />
+      ))}
+
+      {/* Lightbox */}
+      {lightboxIndex !== null && (
+        <ImageLightbox
+          images={images.map((img) => ({
+            src: `/api/attachments/${img.id}`,
+            alt: img.originalFilename,
+          }))}
+          initialIndex={lightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+        />
+      )}
     </div>
   );
 }
@@ -170,46 +282,60 @@ function AttachmentPreview({
     return () => URL.revokeObjectURL(url);
   }, [file, isImage]);
 
-  return (
-    <div className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/30 px-3 py-2">
-      {isImage && preview ? (
-        <button
-          type="button"
-          onClick={() => setLightboxOpen(true)}
-          className="shrink-0 cursor-zoom-in rounded overflow-hidden"
-          title="Preview image"
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
+  if (isImage && preview) {
+    return (
+      <>
+        <div className="relative shrink-0 group/chip">
+          <button
+            type="button"
+            onClick={() => setLightboxOpen(true)}
+            className="block cursor-zoom-in rounded-md overflow-hidden border border-border/60"
+            title="Preview image"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={preview}
+              alt={file.name}
+              className="h-16 w-16 object-cover"
+            />
+          </button>
+          <button
+            type="button"
+            onClick={onRemove}
+            className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-foreground text-background opacity-0 group-hover/chip:opacity-100 transition-opacity"
+            title="Remove"
+          >
+            <X className="h-2.5 w-2.5" />
+          </button>
+        </div>
+        {lightboxOpen && (
+          <ImageLightbox
             src={preview}
             alt={file.name}
-            className="h-10 w-10 rounded object-cover"
+            onClose={() => setLightboxOpen(false)}
           />
-        </button>
-      ) : (
-        <FileIcon className="h-5 w-5 shrink-0 text-muted-foreground" />
-      )}
-      <div className="flex-1 min-w-0">
-        <p className="text-[13px] truncate">{file.name}</p>
-        <p className="text-[11px] text-muted-foreground">
+        )}
+      </>
+    );
+  }
+
+  return (
+    <div className="relative shrink-0 group/chip flex items-center gap-2 rounded-md border border-border/60 bg-muted/30 px-2.5 py-1.5 max-w-[180px]">
+      <FileIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+      <div className="min-w-0">
+        <p className="text-[12px] truncate leading-tight">{file.name}</p>
+        <p className="text-[10px] text-muted-foreground leading-tight">
           {formatFileSize(file.size)}
         </p>
       </div>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
+      <button
+        type="button"
         onClick={onRemove}
+        className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-foreground text-background opacity-0 group-hover/chip:opacity-100 transition-opacity"
+        title="Remove"
       >
-        <X className="h-3.5 w-3.5" />
-      </Button>
-      {lightboxOpen && preview && (
-        <ImageLightbox
-          src={preview}
-          alt={file.name}
-          onClose={() => setLightboxOpen(false)}
-        />
-      )}
+        <X className="h-2.5 w-2.5" />
+      </button>
     </div>
   );
 }
@@ -256,6 +382,7 @@ function MessageBubble({
   isRoomAdminOrOwner,
   grouped = false,
   onReply,
+  onReplyClick,
   onEdit,
   onDelete,
 }: {
@@ -264,6 +391,7 @@ function MessageBubble({
   isRoomAdminOrOwner: boolean;
   grouped?: boolean;
   onReply: (msg: MessagePayload) => void;
+  onReplyClick: (messageId: string) => void;
   onEdit: (msg: MessagePayload) => void;
   onDelete: (msg: MessagePayload) => void;
 }) {
@@ -305,9 +433,9 @@ function MessageBubble({
               <span className="ml-2 text-[10px] text-muted-foreground align-baseline">{time}</span>
             </p>
           )}
-          {message.attachments?.map((att) => (
-            <AttachmentDisplay key={att.id} attachment={att} />
-          ))}
+          {message.attachments && message.attachments.length > 0 && (
+            <AttachmentGroup attachments={message.attachments} />
+          )}
         </div>
         {showMenu && (
           <div className="absolute right-0 top-0 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -361,14 +489,18 @@ function MessageBubble({
         </div>
 
         {message.replyTo && (
-          <div className="mb-1.5 flex items-center gap-1.5 pl-3 border-l-2 border-muted-foreground/30 text-[12px] text-muted-foreground max-w-md">
+          <button
+            type="button"
+            onClick={() => onReplyClick(message.replyTo!.id)}
+            className="mb-1.5 flex items-center gap-1.5 pl-3 border-l-2 border-muted-foreground/30 text-[12px] text-muted-foreground max-w-md hover:border-muted-foreground/60 hover:text-foreground/70 transition-colors cursor-pointer text-left"
+          >
             <span className="font-medium shrink-0">
               {message.replyTo.sender.username}:
             </span>
             <span className="truncate">
               {message.replyTo.content ?? "Original message deleted"}
             </span>
-          </div>
+          </button>
         )}
 
         {message.content && (
@@ -377,9 +509,9 @@ function MessageBubble({
           </p>
         )}
 
-        {message.attachments?.map((att) => (
-          <AttachmentDisplay key={att.id} attachment={att} />
-        ))}
+        {message.attachments && message.attachments.length > 0 && (
+          <AttachmentGroup attachments={message.attachments} />
+        )}
       </div>
 
       {showMenu && (
@@ -517,6 +649,7 @@ function EditableMessage({
   editingId,
   grouped = false,
   onReply,
+  onReplyClick,
   onStartEdit,
   onSaveEdit,
   onCancelEdit,
@@ -528,6 +661,7 @@ function EditableMessage({
   editingId: string | null;
   grouped?: boolean;
   onReply: (msg: MessagePayload) => void;
+  onReplyClick: (messageId: string) => void;
   onStartEdit: (msg: MessagePayload) => void;
   onSaveEdit: (messageId: string, content: string) => void;
   onCancelEdit: () => void;
@@ -563,6 +697,7 @@ function EditableMessage({
       isRoomAdminOrOwner={isRoomAdminOrOwner}
       grouped={grouped}
       onReply={onReply}
+      onReplyClick={onReplyClick}
       onEdit={onStartEdit}
       onDelete={onDelete}
     />
@@ -604,7 +739,7 @@ export default function RoomPage() {
   const [sending, setSending] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<MessagePayload | null>(null);
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<{ id: string; file: File }[]>([]);
   const [uploading, setUploading] = useState(false);
 
   const [showNewMsgPill, setShowNewMsgPill] = useState(false);
@@ -619,7 +754,7 @@ export default function RoomPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Get room info from sidebar query (reactive)
-  const { data: cachedRooms } = useQuery({
+  const { data: cachedRooms, isLoading: isLoadingRooms } = useQuery({
     queryKey: ["my-rooms"],
     queryFn: async () => {
       const res = await fetch("/api/rooms/my");
@@ -637,7 +772,7 @@ export default function RoomPage() {
     staleTime: 30_000,
   });
   const room = cachedRooms?.rooms.find((r) => r.id === roomId);
-  const { data: friendsData } = useQuery({
+  const { data: friendsData, isLoading: isLoadingFriends } = useQuery({
     queryKey: ["friends"],
     queryFn: async () => {
       const res = await fetch("/api/friends");
@@ -649,7 +784,8 @@ export default function RoomPage() {
   const friends = friendsData?.friends ?? [];
   const directFriend = friends.find((friend) => friend.directRoomId === roomId);
   const isDirectRoom = room?.type === "direct";
-  const canMessageDirect = !isDirectRoom || Boolean(directFriend);
+  // While friends are still loading we don't know yet — optimistically allow messaging
+  const canMessageDirect = isLoadingFriends || !isDirectRoom || Boolean(directFriend);
   const roomName =
     isDirectRoom ? directFriend?.username ?? "Direct message" : room?.name;
 
@@ -769,11 +905,21 @@ export default function RoomPage() {
     const onUpdated = (msg: MessagePayload) => {
       if (msg.roomId !== roomId) return;
       setMsgs((prev) =>
-        prev.map((m) =>
-          m.id === msg.id
-            ? { ...m, content: msg.content, editedAt: msg.editedAt }
-            : m,
-        ),
+        prev.map((m) => {
+          let updated = m;
+          // Update the message itself
+          if (m.id === msg.id) {
+            updated = { ...m, content: msg.content, editedAt: msg.editedAt };
+          }
+          // Patch replyTo preview in any message that quotes the edited one
+          if (updated.replyTo?.id === msg.id) {
+            updated = {
+              ...updated,
+              replyTo: { ...updated.replyTo, content: msg.content },
+            };
+          }
+          return updated;
+        }),
       );
     };
 
@@ -956,7 +1102,7 @@ export default function RoomPage() {
     setUploading(true);
 
     const formData = new FormData();
-    for (const file of pendingFiles) {
+    for (const { file } of pendingFiles) {
       formData.append("files", file);
     }
     const comment = input.trim();
@@ -1023,7 +1169,7 @@ export default function RoomPage() {
       }
       if (imageFiles.length > 0) {
         e.preventDefault();
-        setPendingFiles((prev) => [...prev, ...imageFiles]);
+        setPendingFiles((prev) => [...prev, ...imageFiles.map((file) => ({ id: crypto.randomUUID(), file }))]);
       }
     },
     [],
@@ -1033,7 +1179,7 @@ export default function RoomPage() {
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const selected = Array.from(e.target.files ?? []);
       if (selected.length > 0) {
-        setPendingFiles((prev) => [...prev, ...selected]);
+        setPendingFiles((prev) => [...prev, ...selected.map((file) => ({ id: crypto.randomUUID(), file }))]);
       }
       // Reset input so same file can be re-selected
       e.target.value = "";
@@ -1112,6 +1258,17 @@ export default function RoomPage() {
     requestAnimationFrame(() => textareaRef.current?.focus());
   }, []);
 
+  const scrollToMessage = useCallback((messageId: string) => {
+    const el = viewportRef.current?.querySelector<HTMLElement>(
+      `[data-message-id="${messageId}"]`,
+    );
+    if (!el) return; // not loaded in this batch — silently skip
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    // Brief highlight flash
+    el.dataset.highlight = "1";
+    setTimeout(() => delete el.dataset.highlight, 1200);
+  }, []);
+
   // Auto-resize textarea
   useEffect(() => {
     const el = textareaRef.current;
@@ -1150,9 +1307,13 @@ export default function RoomPage() {
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border/60 shrink-0 bg-background/80 backdrop-blur-sm">
         <Hash className="h-4 w-4 text-muted-foreground shrink-0" />
-        <span className="font-semibold text-[15px] flex-1 truncate">
-          {roomName ?? roomId}
-        </span>
+        {(isLoadingRooms || isLoadingFriends) && !roomName ? (
+          <div className="h-4 w-32 rounded bg-muted animate-pulse flex-1 max-w-[8rem]" />
+        ) : (
+          <span className="font-semibold text-[15px] flex-1 truncate">
+            {roomName ?? roomId}
+          </span>
+        )}
         {panelAvailable && (
           <Button
             variant={panelOpen ? "secondary" : "ghost"}
@@ -1218,7 +1379,7 @@ export default function RoomPage() {
               msgDate.getTime() - new Date(prevMsg.createdAt).getTime() < 5 * 60 * 1000;
 
             return (
-              <div key={msg.id} className={grouped ? "mt-0.5" : "mt-3"}>
+              <div key={msg.id} data-message-id={msg.id} className={grouped ? "mt-0.5" : "mt-3"}>
                 {showDateSep && <DateSeparator date={msgDate} />}
                 <EditableMessage
                   message={msg}
@@ -1227,6 +1388,7 @@ export default function RoomPage() {
                   editingId={editingId}
                   grouped={grouped}
                   onReply={handleReply}
+                  onReplyClick={scrollToMessage}
                   onStartEdit={(m) => {
                     setEditingId(m.id);
                     setReplyTo(null);
@@ -1285,13 +1447,13 @@ export default function RoomPage() {
 
       {/* Attachment previews */}
       {pendingFiles.length > 0 && (
-        <div className="px-4 pt-2 shrink-0 flex flex-col gap-1">
-          {pendingFiles.map((file, i) => (
+        <div className="px-4 pt-3 pb-1 shrink-0 flex flex-row gap-2 overflow-x-auto">
+          {pendingFiles.map((pf) => (
             <AttachmentPreview
-              key={`${file.name}-${i}`}
-              file={file}
+              key={pf.id}
+              file={pf.file}
               onRemove={() =>
-                setPendingFiles((prev) => prev.filter((_, idx) => idx !== i))
+                setPendingFiles((prev) => prev.filter((p) => p.id !== pf.id))
               }
             />
           ))}

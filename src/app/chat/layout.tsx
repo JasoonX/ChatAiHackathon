@@ -2,21 +2,31 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useDeferredValue, useEffect, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   Bell,
   ChevronDown,
   ChevronRight,
-  Globe,
   Hash,
   KeyRound,
   Laptop,
   Lock,
+  LogOut,
   Mail,
-  MessageSquare,
   Monitor,
   MoreHorizontal,
   Plus,
@@ -40,6 +50,7 @@ import { useUnread } from "@/components/unread-provider";
 import { ContextPanelContext } from "@/components/context-panel-context";
 import type { InvitationPayload } from "@/lib/socket";
 import type { PresenceSnapshot, PresenceStatus } from "@/lib/socket";
+import { LogoIcon } from "@/components/logo-icon";
 import { RoomManagementModal } from "@/components/room-management-modal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -90,6 +101,8 @@ type PublicRoom = {
   name: string;
   description: string | null;
   memberCount: number;
+  isMember: boolean;
+  isOwner: boolean;
 };
 
 type Friend = {
@@ -243,15 +256,20 @@ function RoomItem({
         )}
         <span className="truncate">{name}</span>
       </Link>
-      <div className="shrink-0 pr-1">
+      <div className="shrink-0 pr-1 flex items-center justify-end min-w-[20px]">
         {action ? (
           <>
             {unread > 0 && (
-              <Badge variant="default" className="text-[10px] px-1.5 py-0 group-hover/room:hidden">
+              <Badge
+                variant="default"
+                className="text-[10px] px-1.5 py-0 mr-[3px] group-hover/room:hidden"
+              >
                 {unread}
               </Badge>
             )}
-            <div className={`flex items-center transition-opacity ${unread > 0 ? "hidden group-hover/room:flex" : "opacity-0 group-hover/room:opacity-100 flex"}`}>
+            <div
+              className={`flex items-center transition-opacity ${unread > 0 ? "hidden group-hover/room:flex" : "opacity-0 group-hover/room:opacity-100 flex"}`}
+            >
               {action}
             </div>
           </>
@@ -298,15 +316,20 @@ function ContactItem({
         <PresenceDot status={presence} />
         <span className="truncate">{name}</span>
       </Link>
-      <div className="shrink-0 pr-1">
+      <div className="shrink-0 pr-1 flex items-center justify-end min-w-[28px]">
         {action ? (
           <>
             {unread > 0 && (
-              <Badge variant="default" className="text-[10px] px-1.5 py-0 group-hover/contact:hidden">
+              <Badge
+                variant="default"
+                className="text-[10px] px-1.5 py-0 mr-[3px] group-hover/contact:hidden"
+              >
                 {unread}
               </Badge>
             )}
-            <div className={`flex items-center transition-opacity ${unread > 0 ? "hidden group-hover/contact:flex" : "opacity-0 group-hover/contact:opacity-100 flex"}`}>
+            <div
+              className={`flex items-center transition-opacity ${unread > 0 ? "hidden group-hover/contact:flex" : "opacity-0 group-hover/contact:opacity-100 flex"}`}
+            >
               {action}
             </div>
           </>
@@ -533,7 +556,7 @@ function CreateRoomDialog({
                           />
                           {t === "public" ? (
                             <span className="flex items-center gap-1">
-                              <Globe className="h-3.5 w-3.5" /> Public
+                              <Hash className="h-3.5 w-3.5" /> Public
                             </span>
                           ) : (
                             <span className="flex items-center gap-1">
@@ -585,22 +608,60 @@ function BrowseRoomsDialog({
   const deferredSearch = useDeferredValue(search);
   const queryClient = useQueryClient();
   const router = useRouter();
+  const scrollAreaRef = useRef<HTMLDivElement | null>(null);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["public-rooms", deferredSearch],
-    queryFn: async () => {
-      const params = new URLSearchParams({ limit: "30" });
-      if (deferredSearch) params.set("search", deferredSearch);
-      const res = await fetch(`/api/rooms/public?${params.toString()}`);
-      if (!res.ok) throw new Error("Failed to fetch rooms");
-      return res.json() as Promise<{
-        rooms: PublicRoom[];
-        nextCursor: string | null;
-      }>;
-    },
-    enabled: open,
-    staleTime: 10_000,
-  });
+  const { data, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage } =
+    useInfiniteQuery({
+      queryKey: ["public-rooms", deferredSearch],
+      queryFn: async ({ pageParam }: { pageParam: string | null }) => {
+        const params = new URLSearchParams({ limit: "30" });
+        if (deferredSearch) params.set("search", deferredSearch);
+        if (pageParam) params.set("cursor", pageParam);
+        const res = await fetch(`/api/rooms/public?${params.toString()}`);
+        if (!res.ok) throw new Error("Failed to fetch rooms");
+        return res.json() as Promise<{
+          rooms: PublicRoom[];
+          nextCursor: string | null;
+        }>;
+      },
+      initialPageParam: null,
+      getNextPageParam: (lastPage) => lastPage.nextCursor,
+      enabled: open,
+      staleTime: 10_000,
+    });
+
+  const rooms = data?.pages.flatMap((page) => page.rooms) ?? [];
+
+  useEffect(() => {
+    if (!open || !hasNextPage || isFetchingNextPage) {
+      return;
+    }
+
+    const root = scrollAreaRef.current?.querySelector(
+      "[data-radix-scroll-area-viewport]",
+    );
+    const target = loadMoreRef.current;
+
+    if (!(root instanceof HTMLElement) || !(target instanceof HTMLElement)) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          void fetchNextPage();
+        }
+      },
+      {
+        root,
+        rootMargin: "0px 0px 120px 0px",
+      },
+    );
+
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage, open, rooms.length]);
 
   const [joiningId, setJoiningId] = useState<string | null>(null);
 
@@ -660,19 +721,19 @@ function BrowseRoomsDialog({
           />
         </div>
 
-        <ScrollArea className="h-80">
+        <ScrollArea ref={scrollAreaRef} className="h-80">
           {isLoading && (
             <p className="py-8 text-center text-[13px] text-muted-foreground">
               Loading…
             </p>
           )}
-          {!isLoading && data?.rooms.length === 0 && (
+          {!isLoading && rooms.length === 0 && (
             <p className="py-8 text-center text-[13px] text-muted-foreground">
               No rooms found
             </p>
           )}
-          <div className="space-y-2 pr-2">
-            {data?.rooms.map((room) => (
+          <div className="space-y-2">
+            {rooms.map((room) => (
               <div
                 key={room.id}
                 className="flex items-center gap-3 rounded-md border bg-card p-3"
@@ -691,17 +752,39 @@ function BrowseRoomsDialog({
                     {room.memberCount} member{room.memberCount !== 1 ? "s" : ""}
                   </p>
                 </div>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="text-[12px] shrink-0"
-                  disabled={joiningId === room.id}
-                  onClick={() => join(room.id)}
-                >
-                  {joiningId === room.id ? "Joining…" : "Join"}
-                </Button>
+                {room.isOwner ? (
+                  <Badge
+                    variant="outline"
+                    className="shrink-0 text-[11px] font-normal text-muted-foreground"
+                  >
+                    Creator
+                  </Badge>
+                ) : room.isMember ? (
+                  <Badge
+                    variant="outline"
+                    className="shrink-0 text-[11px] font-normal text-muted-foreground"
+                  >
+                    Already joined
+                  </Badge>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="text-[12px] shrink-0"
+                    disabled={joiningId === room.id}
+                    onClick={() => join(room.id)}
+                  >
+                    {joiningId === room.id ? "Joining…" : "Join"}
+                  </Button>
+                )}
               </div>
             ))}
+            {hasNextPage && <div ref={loadMoreRef} className="h-1" />}
+            {isFetchingNextPage && (
+              <p className="py-2 text-center text-[12px] text-muted-foreground">
+                Loading more…
+              </p>
+            )}
           </div>
         </ScrollArea>
       </DialogContent>
@@ -810,12 +893,11 @@ function AddFriendDialog({
             {error && <p className="text-[12px] text-destructive">{error}</p>}
           </div>
           <div className="space-y-2">
-            <label
-              htmlFor="friend-message"
-              className="text-[13px] font-medium"
-            >
+            <label htmlFor="friend-message" className="text-[13px] font-medium">
               Message{" "}
-              <span className="text-muted-foreground font-normal">(optional)</span>
+              <span className="text-muted-foreground font-normal">
+                (optional)
+              </span>
             </label>
             <textarea
               id="friend-message"
@@ -868,7 +950,7 @@ function InvitationBell({
   const queryClient = useQueryClient();
   const router = useRouter();
 
-  const { data } = useQuery({
+  const { data, isLoading: isLoadingInvitations } = useQuery({
     queryKey: ["invitations"],
     queryFn: async () => {
       const res = await fetch("/api/invitations");
@@ -952,7 +1034,28 @@ function InvitationBell({
           <DialogTitle>Invitations</DialogTitle>
         </DialogHeader>
         <ScrollArea className="max-h-80">
-          {invitations.length === 0 ? (
+          {isLoadingInvitations ? (
+            <div className="space-y-2 py-2">
+              {[1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-3 rounded-md border bg-card p-3 animate-pulse"
+                >
+                  <div className="h-4 w-4 shrink-0 rounded bg-muted" />
+                  <div className="flex-1 space-y-1.5">
+                    <div
+                      className="h-3 rounded bg-muted"
+                      style={{ width: "55%" }}
+                    />
+                    <div
+                      className="h-2.5 rounded bg-muted"
+                      style={{ width: "40%" }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : invitations.length === 0 ? (
             <p className="py-8 text-center text-[13px] text-muted-foreground">
               No pending invitations
             </p>
@@ -1021,7 +1124,7 @@ function FriendRequestsBell({
   const queryClient = useQueryClient();
   const router = useRouter();
 
-  const { data } = useQuery({
+  const { data, isLoading: isLoadingRequests } = useQuery({
     queryKey: ["friend-requests"],
     queryFn: async () => {
       const res = await fetch("/api/friends/requests");
@@ -1043,11 +1146,13 @@ function FriendRequestsBell({
 
     socket.on("friend:request-received", invalidate);
     socket.on("friend:accepted", invalidate);
+    socket.on("friend:removed", invalidate);
     socket.on("user:banned", invalidate);
 
     return () => {
       socket.off("friend:request-received", invalidate);
       socket.off("friend:accepted", invalidate);
+      socket.off("friend:removed", invalidate);
       socket.off("user:banned", invalidate);
     };
   }, [queryClient, socket]);
@@ -1078,6 +1183,7 @@ function FriendRequestsBell({
       void queryClient.invalidateQueries({ queryKey: ["friends"] });
       void queryClient.invalidateQueries({ queryKey: ["my-rooms"] });
       if (action === "accept") {
+        socket?.emit("presence:refresh");
         toast.success("Friend request accepted");
         if (payload.directRoomId) {
           router.push(`/chat/${payload.directRoomId}`);
@@ -1113,7 +1219,29 @@ function FriendRequestsBell({
           <DialogTitle>Friend Requests</DialogTitle>
         </DialogHeader>
         <ScrollArea className="max-h-80">
-          {requests.length === 0 ? (
+          {isLoadingRequests ? (
+            <div className="space-y-2 py-2">
+              {[1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="rounded-md border bg-card p-3 space-y-2 animate-pulse"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 space-y-1.5">
+                      <div
+                        className="h-3 rounded bg-muted"
+                        style={{ width: "45%" }}
+                      />
+                    </div>
+                    <div className="flex gap-1.5">
+                      <div className="h-7 w-14 rounded bg-muted" />
+                      <div className="h-7 w-14 rounded bg-muted" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : requests.length === 0 ? (
             <p className="py-8 text-center text-[13px] text-muted-foreground">
               No pending friend requests
             </p>
@@ -1129,11 +1257,6 @@ function FriendRequestsBell({
                       <p className="text-[13px] font-medium truncate">
                         {request.requesterUsername}
                       </p>
-                      {request.requesterName && (
-                        <p className="text-[12px] text-muted-foreground truncate">
-                          {request.requesterName}
-                        </p>
-                      )}
                     </div>
                     <div className="flex gap-1.5 shrink-0">
                       <Button
@@ -1618,13 +1741,13 @@ function ProfileMenu({ iconOnly = false }: { iconOnly?: boolean }) {
               <Settings className="h-3.5 w-3.5" />
             </button>
           ) : (
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-          >
-            <User className="h-3.5 w-3.5 shrink-0" />
-            <span>Profile</span>
-          </button>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+            >
+              <User className="h-3.5 w-3.5 shrink-0" />
+              <span>Profile</span>
+            </button>
           )}
         </DropdownMenuTrigger>
         <DropdownMenuContent side="right" align="end" className="w-52">
@@ -1646,8 +1769,14 @@ function ProfileMenu({ iconOnly = false }: { iconOnly?: boolean }) {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <ChangePasswordDialog open={changePasswordOpen} onOpenChange={setChangePasswordOpen} />
-      <DeleteAccountDialog open={deleteAccountOpen} onOpenChange={setDeleteAccountOpen} />
+      <ChangePasswordDialog
+        open={changePasswordOpen}
+        onOpenChange={setChangePasswordOpen}
+      />
+      <DeleteAccountDialog
+        open={deleteAccountOpen}
+        onOpenChange={setDeleteAccountOpen}
+      />
       <SessionsDialog open={sessionsOpen} onOpenChange={setSessionsOpen} />
     </>
   );
@@ -1660,11 +1789,17 @@ function ProfileMenu({ iconOnly = false }: { iconOnly?: boolean }) {
 function InviteUserDialog({
   roomId,
   trigger = "button",
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
 }: {
   roomId: string;
   trigger?: "button" | "icon";
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = controlledOnOpenChange ?? setInternalOpen;
   const [username, setUsername] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1692,6 +1827,56 @@ function InviteUserDialog({
       setSubmitting(false);
     }
   };
+
+  // Controlled mode: render dialog without a trigger
+  if (controlledOpen !== undefined) {
+    return (
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Invite User</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={onSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <label
+                htmlFor="invite-username-ctrl"
+                className="text-[13px] font-medium"
+              >
+                Username
+              </label>
+              <Input
+                id="invite-username-ctrl"
+                placeholder="Enter username…"
+                value={username}
+                onChange={(e) => {
+                  setUsername(e.target.value);
+                  setError(null);
+                }}
+              />
+              {error && <p className="text-[12px] text-destructive">{error}</p>}
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={submitting || !username.trim()}
+              >
+                {submitting ? "Sending…" : "Send invite"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -1768,7 +1953,7 @@ function TopNav({
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center border-b bg-background/80 backdrop-blur-[12px] px-4 gap-4">
       <Link href="/chat" className="flex items-center gap-2 shrink-0">
-        <MessageSquare className="h-5 w-5 text-primary" />
+        <LogoIcon className="h-5 w-5" />
         <span className="text-base font-semibold tracking-tight">Chatty</span>
       </Link>
 
@@ -1783,14 +1968,180 @@ function TopNav({
 }
 
 // ---------------------------------------------------------------------------
+// Sidebar skeleton rows
+// ---------------------------------------------------------------------------
+
+function SidebarSkeletonRows({ count = 3 }: { count?: number }) {
+  return (
+    <div className="space-y-0.5 px-1">
+      {Array.from({ length: count }).map((_, i) => (
+        <div
+          key={i}
+          className="flex items-center gap-2 px-2 py-1.5 rounded-md animate-pulse"
+        >
+          <div className="h-3.5 w-3.5 shrink-0 rounded bg-muted" />
+          <div
+            className="h-3 rounded bg-muted"
+            style={{ width: `${55 + ((i * 17) % 35)}%` }}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Inline action buttons for room items in the sidebar
+// ---------------------------------------------------------------------------
+
+function RoomSidebarActions({
+  room,
+  isOwner,
+  onLeave,
+  onDelete,
+  showInvite,
+}: {
+  room: MyRoom;
+  isOwner: boolean;
+  onLeave: () => void;
+  onDelete: () => void;
+  showInvite?: boolean;
+}) {
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [confirmLeaveOpen, setConfirmLeaveOpen] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+
+  const iconBtn =
+    "flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:text-foreground transition-colors";
+
+  return (
+    <div className="flex items-center gap-0.5">
+      {showInvite && (
+        <>
+          <button
+            type="button"
+            className={iconBtn}
+            title="Invite user"
+            onClick={(e) => {
+              e.preventDefault();
+              setInviteOpen(true);
+            }}
+          >
+            <UserPlus className="h-3 w-3" />
+          </button>
+          <InviteUserDialog
+            roomId={room.id}
+            open={inviteOpen}
+            onOpenChange={setInviteOpen}
+          />
+        </>
+      )}
+
+      {isOwner ? (
+        <>
+          <button
+            type="button"
+            className={`${iconBtn} hover:text-destructive`}
+            title="Delete room"
+            onClick={(e) => {
+              e.preventDefault();
+              setConfirmDeleteOpen(true);
+            }}
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+          <Dialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+            <DialogContent className="sm:max-w-sm">
+              <DialogHeader>
+                <DialogTitle>Delete room?</DialogTitle>
+              </DialogHeader>
+              <p className="text-[13px] text-muted-foreground">
+                This will permanently delete <strong>{room.name}</strong> and
+                all its messages and files. This cannot be undone.
+              </p>
+              <div className="flex justify-end gap-2 mt-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setConfirmDeleteOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => {
+                    setConfirmDeleteOpen(false);
+                    onDelete();
+                  }}
+                >
+                  Delete
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </>
+      ) : (
+        <>
+          <button
+            type="button"
+            className={`${iconBtn} hover:text-destructive`}
+            title="Leave room"
+            onClick={(e) => {
+              e.preventDefault();
+              setConfirmLeaveOpen(true);
+            }}
+          >
+            <LogOut className="h-3 w-3" />
+          </button>
+          <Dialog open={confirmLeaveOpen} onOpenChange={setConfirmLeaveOpen}>
+            <DialogContent className="sm:max-w-sm">
+              <DialogHeader>
+                <DialogTitle>Leave room?</DialogTitle>
+              </DialogHeader>
+              <p className="text-[13px] text-muted-foreground">
+                You will leave <strong>{room.name}</strong>.
+                {room.type === "private" &&
+                  " Since this is a private room, you'll need a new invitation to rejoin."}
+              </p>
+              <div className="flex justify-end gap-2 mt-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setConfirmLeaveOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => {
+                    setConfirmLeaveOpen(false);
+                    onLeave();
+                  }}
+                >
+                  Leave
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Left sidebar
 // ---------------------------------------------------------------------------
 
 function RoomsSidebar({
   myRooms,
+  isLoadingRooms,
   socket,
 }: {
   myRooms: MyRoom[];
+  isLoadingRooms: boolean;
   socket: ReturnType<typeof useSocket>["socket"];
 }) {
   const queryClient = useQueryClient();
@@ -1814,11 +2165,46 @@ function RoomsSidebar({
   );
   const { getUnreadCount } = useUnread();
   const { data: session } = authClient.useSession();
+  const currentUserId = session?.user?.id ?? "";
   const currentUsername = session?.user?.name ?? "";
   const currentEmail = session?.user?.email ?? "";
   const activeRoomId = pathname.startsWith("/chat/")
     ? pathname.split("/")[2]
     : null;
+
+  const leaveRoom = useCallback(
+    async (roomId: string, roomName: string) => {
+      const res = await fetch(`/api/rooms/${roomId}/leave`, { method: "POST" });
+      if (!res.ok) {
+        const err = (await res.json()) as { error?: string };
+        toast.error(err.error ?? "Failed to leave room");
+        return;
+      }
+      toast.success(`Left ${roomName}`);
+      void queryClient.invalidateQueries({ queryKey: ["my-rooms"] });
+      if (activeRoomId === roomId) {
+        router.replace("/chat");
+      }
+    },
+    [queryClient, activeRoomId, router],
+  );
+
+  const deleteRoom = useCallback(
+    async (roomId: string, roomName: string) => {
+      const res = await fetch(`/api/rooms/${roomId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = (await res.json()) as { error?: string };
+        toast.error(err.error ?? "Failed to delete room");
+        return;
+      }
+      toast.success(`${roomName} deleted`);
+      void queryClient.invalidateQueries({ queryKey: ["my-rooms"] });
+      if (activeRoomId === roomId) {
+        router.replace("/chat");
+      }
+    },
+    [queryClient, activeRoomId, router],
+  );
 
   const [presence, setPresence] = useState<PresenceSnapshot>(() =>
     getCachedPresence(),
@@ -1827,7 +2213,7 @@ function RoomsSidebar({
   const publicRooms = myRooms.filter((r) => r.type === "public");
   const privateRooms = myRooms.filter((r) => r.type === "private");
 
-  const { data: friendsData } = useQuery({
+  const { data: friendsData, isLoading: isLoadingFriends } = useQuery({
     queryKey: ["friends"],
     queryFn: async () => {
       const res = await fetch("/api/friends");
@@ -1881,7 +2267,9 @@ function RoomsSidebar({
     }) => {
       const res = await fetch(`/api/users/${userId}/ban`, { method: "POST" });
       if (!res.ok) {
-        const err = (await res.json().catch(() => null)) as { error?: string } | null;
+        const err = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
         throw new Error(err?.error ?? "Failed to ban user");
       }
       return { username };
@@ -1912,6 +2300,11 @@ function RoomsSidebar({
       void queryClient.invalidateQueries({ queryKey: ["my-rooms"] });
     };
 
+    const handleFriendAccepted = () => {
+      invalidate();
+      socket.emit("presence:refresh");
+    };
+
     const handleSnapshot = (snapshot: PresenceSnapshot) =>
       setPresence(snapshot);
     const handleUpdate = ({
@@ -1925,7 +2318,8 @@ function RoomsSidebar({
     };
 
     socket.on("friend:request-received", invalidate);
-    socket.on("friend:accepted", invalidate);
+    socket.on("friend:accepted", handleFriendAccepted);
+    socket.on("friend:removed", invalidate);
     socket.on("user:banned", invalidate);
     socket.on("presence:snapshot", handleSnapshot);
     socket.on("presence:update", handleUpdate);
@@ -1934,7 +2328,8 @@ function RoomsSidebar({
 
     return () => {
       socket.off("friend:request-received", invalidate);
-      socket.off("friend:accepted", invalidate);
+      socket.off("friend:accepted", handleFriendAccepted);
+      socket.off("friend:removed", invalidate);
       socket.off("user:banned", invalidate);
       socket.off("presence:snapshot", handleSnapshot);
       socket.off("presence:update", handleUpdate);
@@ -1945,7 +2340,7 @@ function RoomsSidebar({
     <aside className="flex w-[260px] shrink-0 flex-col border-r bg-card">
       <div className="flex h-12 shrink-0 items-center gap-2 px-3">
         <div className="flex items-center gap-2">
-          <MessageSquare className="h-5 w-5 text-primary" />
+          <LogoIcon className="h-5 w-5" />
           <span className="text-base font-semibold tracking-tight">Chatty</span>
         </div>
       </div>
@@ -1960,7 +2355,9 @@ function RoomsSidebar({
               <CreateRoomDialog onSuccess={invalidateRooms} trigger="icon" />
             }
           >
-            {publicRooms.length === 0 ? (
+            {isLoadingRooms ? (
+              <SidebarSkeletonRows count={3} />
+            ) : publicRooms.length === 0 ? (
               <p className="px-2 py-1 text-[12px] text-muted-foreground">
                 No rooms yet
               </p>
@@ -1973,6 +2370,14 @@ function RoomsSidebar({
                   unread={getUnreadCount(room.id)}
                   isActive={activeRoomId === room.id}
                   onMouseEnter={() => prefetchRoom(room.id)}
+                  action={
+                    <RoomSidebarActions
+                      room={room}
+                      isOwner={room.ownerId === currentUserId}
+                      onLeave={() => void leaveRoom(room.id, room.name)}
+                      onDelete={() => void deleteRoom(room.id, room.name)}
+                    />
+                  }
                 />
               ))
             )}
@@ -1981,9 +2386,17 @@ function RoomsSidebar({
 
           <SidebarSection
             title="Private Rooms"
-            action={<CreateRoomDialog onSuccess={invalidateRooms} trigger="icon" defaultType="private" />}
+            action={
+              <CreateRoomDialog
+                onSuccess={invalidateRooms}
+                trigger="icon"
+                defaultType="private"
+              />
+            }
           >
-            {privateRooms.length === 0 ? (
+            {isLoadingRooms ? (
+              <SidebarSkeletonRows count={2} />
+            ) : privateRooms.length === 0 ? (
               <p className="px-2 py-1 text-[12px] text-muted-foreground">
                 No rooms yet
               </p>
@@ -1996,8 +2409,16 @@ function RoomsSidebar({
                   isPrivate
                   unread={getUnreadCount(room.id)}
                   isActive={activeRoomId === room.id}
-                  action={<InviteUserDialog roomId={room.id} trigger="icon" />}
                   onMouseEnter={() => prefetchRoom(room.id)}
+                  action={
+                    <RoomSidebarActions
+                      room={room}
+                      isOwner={room.ownerId === currentUserId}
+                      showInvite
+                      onLeave={() => void leaveRoom(room.id, room.name)}
+                      onDelete={() => void deleteRoom(room.id, room.name)}
+                    />
+                  }
                 />
               ))
             )}
@@ -2018,7 +2439,9 @@ function RoomsSidebar({
               />
             }
           >
-            {friends.length === 0 ? (
+            {isLoadingFriends ? (
+              <SidebarSkeletonRows count={4} />
+            ) : friends.length === 0 ? (
               <p className="px-2 py-1 text-[12px] text-muted-foreground">
                 No friends yet
               </p>
@@ -2097,10 +2520,14 @@ function RoomsSidebar({
           </div>
           <div className="flex min-w-0 flex-1 flex-col">
             {currentUsername && (
-              <span className="truncate text-[13px] font-medium leading-tight">{currentUsername}</span>
+              <span className="truncate text-[13px] font-medium leading-tight">
+                {currentUsername}
+              </span>
             )}
             {currentEmail && (
-              <span className="truncate text-[11px] text-muted-foreground leading-tight">{currentEmail}</span>
+              <span className="truncate text-[11px] text-muted-foreground leading-tight">
+                {currentEmail}
+              </span>
             )}
           </div>
           <ProfileMenu iconOnly />
@@ -2133,7 +2560,7 @@ function ContextPanel({
   );
   const { data: session } = authClient.useSession();
 
-  const { data: friendsData } = useQuery({
+  const { data: friendsData, isLoading: isLoadingFriendsPanel } = useQuery({
     queryKey: ["friends"],
     queryFn: async () => {
       const res = await fetch("/api/friends");
@@ -2142,7 +2569,9 @@ function ContextPanel({
     },
     staleTime: 30_000,
   });
-  const friendUserIds = new Set((friendsData?.friends ?? []).map((f) => f.userId));
+  const friendUserIds = new Set(
+    (friendsData?.friends ?? []).map((f) => f.userId),
+  );
 
   const { data: roomData, isLoading } = useQuery({
     queryKey: ["room-management", activeRoomId],
@@ -2314,10 +2743,21 @@ function ContextPanel({
             <p className="px-4 py-6 text-[12px] text-muted-foreground">
               Select a room to see members
             </p>
-          ) : isLoading ? (
-            <p className="px-4 py-6 text-[12px] text-muted-foreground">
-              Loading members…
-            </p>
+          ) : isLoading || isLoadingFriendsPanel ? (
+            <div className="space-y-0.5 py-1">
+              {[1, 2, 3, 4].map((i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-2 px-3 py-1.5 animate-pulse"
+                >
+                  <div className="h-2 w-2 shrink-0 rounded-full bg-muted" />
+                  <div
+                    className="h-3 rounded bg-muted"
+                    style={{ width: `${45 + ((i * 19) % 30)}%` }}
+                  />
+                </div>
+              ))}
+            </div>
           ) : (
             activeMembers.map((member) => (
               <MemberItem
@@ -2339,7 +2779,9 @@ function ContextPanel({
                   });
                 }}
                 onRemoveFriend={() => {
-                  const friend = friendsData?.friends.find((f) => f.userId === member.userId);
+                  const friend = friendsData?.friends.find(
+                    (f) => f.userId === member.userId,
+                  );
                   if (!friend) return;
                   void runMemberAction({
                     url: `/api/friends/${friend.friendshipId}`,
@@ -2387,7 +2829,7 @@ export default function ChatLayout({
     ? pathname.split("/")[2]
     : null;
 
-  const { data: myRoomsData } = useQuery({
+  const { data: myRoomsData, isLoading: isLoadingRooms } = useQuery({
     queryKey: ["my-rooms"],
     queryFn: async () => {
       const res = await fetch("/api/rooms/my");
@@ -2495,6 +2937,7 @@ export default function ChatLayout({
     socket.on("room:member-banned", onMemberBanned);
     socket.on("friend:request-received", onFriendEvent);
     socket.on("friend:accepted", onFriendEvent);
+    socket.on("friend:removed", onFriendEvent);
     socket.on("user:banned", onFriendEvent);
     socket.on("message:new", onNewMessage);
 
@@ -2508,6 +2951,7 @@ export default function ChatLayout({
       socket.off("room:member-banned", onMemberBanned);
       socket.off("friend:request-received", onFriendEvent);
       socket.off("friend:accepted", onFriendEvent);
+      socket.off("friend:removed", onFriendEvent);
       socket.off("user:banned", onFriendEvent);
       socket.off("message:new", onNewMessage);
     };
@@ -2534,7 +2978,11 @@ export default function ChatLayout({
       }}
     >
       <div className="flex h-screen bg-background">
-        <RoomsSidebar myRooms={myRooms} socket={socket} />
+        <RoomsSidebar
+          myRooms={myRooms}
+          isLoadingRooms={isLoadingRooms}
+          socket={socket}
+        />
 
         <main className="flex flex-1 flex-col overflow-hidden">{children}</main>
 

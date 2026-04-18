@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { isValidUUID } from "@/lib/validate";
 import { friendships } from "@/db/schema/friends";
+import { getIO } from "@/lib/socket-server";
 import { getCurrentUser } from "@/server/auth";
 
 type RouteContext = { params: Promise<{ friendshipId: string }> };
@@ -34,6 +35,26 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
   }
 
   await db.delete(friendships).where(eq(friendships.id, friendshipId));
+
+  // Notify the other party in real-time
+  const otherUserId =
+    friendship.userOneId === user.id ? friendship.userTwoId : friendship.userOneId;
+
+  const io = getIO();
+  if (io) {
+    const sockets = await io.fetchSockets();
+    for (const s of sockets) {
+      if (s.data.userId === otherUserId) {
+        s.emit("friend:removed", { friendUserId: user.id });
+      }
+    }
+    // Also notify the actor so other tabs update immediately
+    for (const s of sockets) {
+      if (s.data.userId === user.id) {
+        s.emit("friend:removed", { friendUserId: otherUserId });
+      }
+    }
+  }
 
   return NextResponse.json({ success: true });
 }

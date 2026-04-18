@@ -249,6 +249,10 @@ async function bootstrap() {
       recordHeartbeat(userId, socket.id);
     });
 
+    socket.on("presence:refresh", () => {
+      socket.emit("presence:snapshot", getSnapshot());
+    });
+
     socket.on("disconnect", () => {
       removeSocket(userId, socket.id);
       console.log(`User disconnected: ${userId} (${username})`);

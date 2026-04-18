@@ -55,6 +55,7 @@ export type FriendRequestPayload = {
   requestId: string;
   requesterUserId: string;
   requesterUsername: string;
+  message: string | null;
   createdAt: string;
 };
 
@@ -89,6 +90,7 @@ export type ServerToClientEvents = {
     friendUsername: string;
     directRoomId: string;
   }) => void;
+  "friend:removed": (payload: { friendUserId: string }) => void;
   "user:banned": (payload: {
     blockerUserId: string;
     blockedUserId: string;
@@ -122,4 +124,6 @@ export type ClientToServerEvents = {
   "room:subscribe": (roomId: string) => void;
   /** Client activity heartbeat for presence tracking. */
   heartbeat: () => void;
+  /** Request a fresh presence snapshot from the server. */
+  "presence:refresh": () => void;
 };

@@ -56,8 +56,10 @@ export async function GET(req: NextRequest) {
       name: rooms.name,
       description: rooms.description,
       type: rooms.type,
+      ownerId: rooms.ownerId,
       createdAt: rooms.createdAt,
       memberCount: sql<number>`count(${roomMembers.id})::int`,
+      isMember: sql<boolean>`bool_or(${roomMembers.userId} = ${user.id})`,
     })
     .from(rooms)
     .leftJoin(roomMembers, eq(roomMembers.roomId, rooms.id))
@@ -72,5 +74,11 @@ export async function GET(req: NextRequest) {
     rows.splice(limit);
   }
 
-  return NextResponse.json({ rooms: rows, nextCursor });
+  return NextResponse.json({
+    rooms: rows.map((room) => ({
+      ...room,
+      isOwner: room.ownerId === user.id,
+    })),
+    nextCursor,
+  });
 }

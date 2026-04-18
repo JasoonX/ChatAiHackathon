@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
-import { Hash, MessageSquare } from "lucide-react";
+import { Hash } from "lucide-react";
+
+import { LogoIcon } from "@/components/logo-icon";
 
 import { db } from "@/db";
 import { rooms, roomMembers } from "@/db/schema/rooms";
@@ -26,7 +28,7 @@ export default async function ChatPage() {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center px-6">
       <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
-        <MessageSquare className="h-7 w-7 text-muted-foreground" />
+        <LogoIcon className="h-8 w-8" />
       </div>
       <div className="space-y-1">
         <p className="text-[15px] font-medium">No conversations yet</p>

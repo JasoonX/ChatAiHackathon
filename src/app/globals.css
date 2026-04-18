@@ -2,6 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer utilities {
+  [data-highlight="1"] {
+    animation: msg-highlight 1.2s ease-out forwards;
+  }
+
+  @keyframes msg-highlight {
+    0%   { background-color: hsl(var(--primary) / 0.18); border-radius: 6px; }
+    100% { background-color: transparent; }
+  }
+}
+
 @layer base {
   :root {
     --background: 0 0% 0%;
