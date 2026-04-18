@@ -12,18 +12,22 @@ import {
   ChevronRight,
   Globe,
   Hash,
+  KeyRound,
+  Laptop,
   Lock,
+  Mail,
   MessageSquare,
   Monitor,
   MoreHorizontal,
-  PanelLeftClose,
-  PanelLeftOpen,
   Plus,
   Search,
   Settings,
   Smartphone,
+  Trash2,
   User,
+  UserMinus,
   UserPlus,
+  UserX,
 } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -33,6 +37,7 @@ import { useSocket } from "@/hooks/use-socket";
 import { authClient } from "@/lib/auth-client";
 import { getCachedPresence, disconnectSocket } from "@/lib/socket-client";
 import { useUnread } from "@/components/unread-provider";
+import { ContextPanelContext } from "@/components/context-panel-context";
 import type { InvitationPayload } from "@/lib/socket";
 import type { PresenceSnapshot, PresenceStatus } from "@/lib/socket";
 import { RoomManagementModal } from "@/components/room-management-modal";
@@ -123,7 +128,9 @@ type CreateRoomForm = z.infer<typeof createRoomSchema>;
 const changePasswordSchema = z
   .object({
     currentPassword: z.string().min(1, "Current password is required"),
-    newPassword: z.string().min(8, "New password must be at least 8 characters"),
+    newPassword: z
+      .string()
+      .min(8, "New password must be at least 8 characters"),
     confirmNewPassword: z.string().min(1, "Confirm your new password"),
   })
   .refine((data) => data.newPassword === data.confirmNewPassword, {
@@ -175,7 +182,7 @@ function SidebarSection({
 
   return (
     <div>
-      <div className="flex items-center gap-1 px-3 py-1.5">
+      <div className="flex items-center gap-1 pl-3 pr-2 py-1.5">
         <button
           type="button"
           onClick={() => setOpen(!open)}
@@ -216,7 +223,7 @@ function RoomItem({
 }) {
   return (
     <div
-      className={`group/room flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px] transition-colors ${
+      className={`group/room flex w-full items-center rounded-md text-[13px] transition-colors ${
         isActive
           ? "bg-accent text-foreground"
           : "text-muted-foreground hover:bg-accent hover:text-foreground"
@@ -224,7 +231,7 @@ function RoomItem({
     >
       <Link
         href={`/chat/${id}`}
-        className="flex flex-1 items-center gap-2 min-w-0"
+        className="flex flex-1 items-center gap-2 min-w-0 px-2 py-1.5"
       >
         {isPrivate ? (
           <Lock className="h-3.5 w-3.5 shrink-0" />
@@ -234,12 +241,12 @@ function RoomItem({
         <span className="truncate">{name}</span>
       </Link>
       {unread > 0 && (
-        <Badge variant="default" className="text-[10px] px-1.5 py-0">
+        <Badge variant="default" className="text-[10px] px-1.5 py-0 mr-1">
           {unread}
         </Badge>
       )}
       {action && (
-        <div className="opacity-0 group-hover/room:opacity-100 transition-opacity shrink-0">
+        <div className="flex items-center opacity-0 group-hover/room:opacity-100 transition-opacity shrink-0 pr-1">
           {action}
         </div>
       )}
@@ -267,8 +274,13 @@ function ContactItem({
   action?: React.ReactNode;
 }) {
   return (
-    <div className={`group/contact flex w-full items-center rounded-md text-[13px] transition-colors ${isActive ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground"}`}>
-      <Link href={href} className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5">
+    <div
+      className={`group/contact flex w-full items-center rounded-md text-[13px] transition-colors ${isActive ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground"}`}
+    >
+      <Link
+        href={href}
+        className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5"
+      >
         <PresenceDot status={presence} />
         <span className="truncate">{name}</span>
       </Link>
@@ -296,7 +308,10 @@ function MemberItem({
   role,
   presence,
   canShowActions = false,
+  isFriend = false,
+  isCurrentUser = false,
   onAddFriend,
+  onRemoveFriend,
   onBanUser,
 }: {
   userId: string;
@@ -304,7 +319,10 @@ function MemberItem({
   role: "owner" | "admin" | "member";
   presence: Presence;
   canShowActions?: boolean;
+  isFriend?: boolean;
+  isCurrentUser?: boolean;
   onAddFriend?: (userId: string) => void;
+  onRemoveFriend?: (userId: string) => void;
   onBanUser?: (userId: string) => void;
 }) {
   const roleVariant =
@@ -321,7 +339,12 @@ function MemberItem({
           {name.slice(0, 2).toUpperCase()}
         </AvatarFallback>
       </Avatar>
-      <span className="flex-1 truncate text-[13px]">{name}</span>
+      <span className="flex-1 truncate text-[13px]">
+        {name}
+        {isCurrentUser && (
+          <span className="ml-1 text-[11px] text-muted-foreground">(you)</span>
+        )}
+      </span>
       {role !== "member" && (
         <Badge variant={roleVariant} className="text-[10px] px-1.5 py-0">
           {role}
@@ -331,18 +354,27 @@ function MemberItem({
       {canShowActions && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-7 w-7">
+            <Button variant="ghost" size="icon" className="h-6 w-6">
               <MoreHorizontal className="h-3.5 w-3.5" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-40">
-            <DropdownMenuItem onClick={() => onAddFriend?.(userId)}>
-              Add friend
-            </DropdownMenuItem>
+            {isFriend ? (
+              <DropdownMenuItem onClick={() => onRemoveFriend?.(userId)}>
+                <UserMinus className="h-4 w-4" />
+                Remove friend
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem onClick={() => onAddFriend?.(userId)}>
+                <UserPlus className="h-4 w-4" />
+                Add friend
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem
               className="text-destructive focus:text-destructive"
               onClick={() => onBanUser?.(userId)}
             >
+              <UserX className="h-4 w-4" />
               Ban user
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -359,16 +391,18 @@ function MemberItem({
 function CreateRoomDialog({
   onSuccess,
   trigger = "button",
+  defaultType = "public",
 }: {
   onSuccess: () => void;
   trigger?: "button" | "icon";
+  defaultType?: "public" | "private";
 }) {
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const form = useForm<CreateRoomForm>({
     resolver: zodResolver(createRoomSchema),
-    defaultValues: { name: "", description: "", type: "public" },
+    defaultValues: { name: "", description: "", type: defaultType },
   });
 
   const onSubmit = async (data: CreateRoomForm) => {
@@ -407,7 +441,7 @@ function CreateRoomDialog({
         {trigger === "icon" ? (
           <button
             type="button"
-            className="rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors"
+            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground transition-colors"
             title="Create room"
           >
             <Plus className="h-3 w-3" />
@@ -578,7 +612,7 @@ function BrowseRoomsDialog({
         {trigger === "icon" ? (
           <button
             type="button"
-            className="rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors"
+            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground transition-colors"
             title="Browse public rooms"
           >
             <Search className="h-3 w-3" />
@@ -628,7 +662,9 @@ function BrowseRoomsDialog({
               >
                 <Hash className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-medium truncate">{room.name}</p>
+                  <p className="text-[13px] font-medium truncate">
+                    {room.name}
+                  </p>
                   {room.description && (
                     <p className="text-[12px] text-muted-foreground truncate">
                       {room.description}
@@ -716,7 +752,7 @@ function AddFriendDialog({
         {trigger === "icon" ? (
           <button
             type="button"
-            className="rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors"
+            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground transition-colors"
             title="Add friend"
           >
             <Plus className="h-3 w-3" />
@@ -734,7 +770,10 @@ function AddFriendDialog({
         </DialogHeader>
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="space-y-2">
-            <label htmlFor="friend-username" className="text-[13px] font-medium">
+            <label
+              htmlFor="friend-username"
+              className="text-[13px] font-medium"
+            >
               Username
             </label>
             <Input
@@ -749,10 +788,19 @@ function AddFriendDialog({
             {error && <p className="text-[12px] text-destructive">{error}</p>}
           </div>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setOpen(false)}
+            >
               Cancel
             </Button>
-            <Button type="submit" size="sm" disabled={submitting || !username.trim()}>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={submitting || !username.trim()}
+            >
               {submitting ? "Sending…" : "Send request"}
             </Button>
           </div>
@@ -841,14 +889,18 @@ function InvitationBell({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative h-8 w-8">
-          <Bell className="h-4 w-4" />
+        <button
+          type="button"
+          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+        >
+          <Mail className="h-3.5 w-3.5 shrink-0" />
+          <span className="flex-1 text-left">Invitations</span>
           {invitations.length > 0 && (
-            <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-medium text-destructive-foreground">
+            <Badge variant="default" className="text-[10px] px-1.5 py-0">
               {invitations.length}
-            </span>
+            </Badge>
           )}
-        </Button>
+        </button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
@@ -998,14 +1050,18 @@ function FriendRequestsBell({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative h-8 w-8">
-          <UserPlus className="h-4 w-4" />
+        <button
+          type="button"
+          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+        >
+          <UserPlus className="h-3.5 w-3.5 shrink-0" />
+          <span className="flex-1 text-left">Friend requests</span>
           {requests.length > 0 && (
-            <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-medium text-destructive-foreground">
+            <Badge variant="default" className="text-[10px] px-1.5 py-0">
               {requests.length}
-            </span>
+            </Badge>
           )}
-        </Button>
+        </button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
@@ -1042,7 +1098,10 @@ function FriendRequestsBell({
                       className="h-7 px-2 text-[12px]"
                       disabled={respond.isPending}
                       onClick={() =>
-                        respond.mutate({ requestId: request.id, action: "accept" })
+                        respond.mutate({
+                          requestId: request.id,
+                          action: "accept",
+                        })
                       }
                     >
                       Accept
@@ -1053,7 +1112,10 @@ function FriendRequestsBell({
                       className="h-7 px-2 text-[12px]"
                       disabled={respond.isPending}
                       onClick={() =>
-                        respond.mutate({ requestId: request.id, action: "reject" })
+                        respond.mutate({
+                          requestId: request.id,
+                          action: "reject",
+                        })
                       }
                     >
                       Reject
@@ -1234,7 +1296,9 @@ function DeleteAccountDialog({
       });
 
       if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        const payload = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
         toast.error(payload?.error ?? "Failed to delete account");
         return;
       }
@@ -1265,12 +1329,15 @@ function DeleteAccountDialog({
 
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            This will permanently delete your account, all rooms you own, and all
-            messages in those rooms. This cannot be undone.
+            This will permanently delete your account, all rooms you own, and
+            all messages in those rooms. This cannot be undone.
           </p>
 
           <div className="space-y-2">
-            <label htmlFor="delete-account-confirm" className="text-sm font-medium">
+            <label
+              htmlFor="delete-account-confirm"
+              className="text-sm font-medium"
+            >
               Type DELETE to confirm
             </label>
             <Input
@@ -1415,13 +1482,17 @@ function SessionsDialog({
                         {s.browser} on {s.os}
                       </span>
                       {s.isCurrent && (
-                        <Badge variant="default" className="text-[10px] px-1.5 py-0">
+                        <Badge
+                          variant="default"
+                          className="text-[10px] px-1.5 py-0"
+                        >
                           Current
                         </Badge>
                       )}
                     </div>
                     <p className="text-[12px] text-muted-foreground">
-                      {s.ipAddress ?? "Unknown IP"} · Last active {formatRelativeTime(s.lastActiveAt)}
+                      {s.ipAddress ?? "Unknown IP"} · Last active{" "}
+                      {formatRelativeTime(s.lastActiveAt)}
                     </p>
                   </div>
                   {!s.isCurrent && (
@@ -1443,7 +1514,9 @@ function SessionsDialog({
 
       <Dialog
         open={confirmRevokeId !== null}
-        onOpenChange={(o) => { if (!o) setConfirmRevokeId(null); }}
+        onOpenChange={(o) => {
+          if (!o) setConfirmRevokeId(null);
+        }}
       >
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
@@ -1478,7 +1551,7 @@ function SessionsDialog({
   );
 }
 
-function ProfileMenu() {
+function ProfileMenu({ iconOnly = false }: { iconOnly?: boolean }) {
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
   const [sessionsOpen, setSessionsOpen] = useState(false);
@@ -1487,35 +1560,45 @@ function ProfileMenu() {
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="sm" className="gap-1.5">
-            <User className="h-4 w-4" />
-            <span className="hidden sm:inline text-[13px]">Profile</span>
-          </Button>
+          {iconOnly ? (
+            <button
+              type="button"
+              title="Profile settings"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+            >
+              <Settings className="h-3.5 w-3.5" />
+            </button>
+          ) : (
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+          >
+            <User className="h-3.5 w-3.5 shrink-0" />
+            <span>Profile</span>
+          </button>
+          )}
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuContent side="right" align="end" className="w-52">
           <DropdownMenuItem onClick={() => setChangePasswordOpen(true)}>
+            <KeyRound className="h-4 w-4" />
             Change password
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => setSessionsOpen(true)}>
+            <Laptop className="h-4 w-4" />
             Active sessions
           </DropdownMenuItem>
           <DropdownMenuItem
-            className="text-destructive focus:text-destructive"
+            className="text-destructive data-[highlighted]:text-destructive"
             onClick={() => setDeleteAccountOpen(true)}
           >
+            <Trash2 className="h-4 w-4" />
             Delete account
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <ChangePasswordDialog
-        open={changePasswordOpen}
-        onOpenChange={setChangePasswordOpen}
-      />
-      <DeleteAccountDialog
-        open={deleteAccountOpen}
-        onOpenChange={setDeleteAccountOpen}
-      />
+      <ChangePasswordDialog open={changePasswordOpen} onOpenChange={setChangePasswordOpen} />
+      <DeleteAccountDialog open={deleteAccountOpen} onOpenChange={setDeleteAccountOpen} />
       <SessionsDialog open={sessionsOpen} onOpenChange={setSessionsOpen} />
     </>
   );
@@ -1567,7 +1650,7 @@ function InviteUserDialog({
         {trigger === "icon" ? (
           <button
             type="button"
-            className="rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors"
+            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground transition-colors"
             title="Invite user to room"
           >
             <UserPlus className="h-3 w-3" />
@@ -1599,9 +1682,7 @@ function InviteUserDialog({
                 setError(null);
               }}
             />
-            {error && (
-              <p className="text-[12px] text-destructive">{error}</p>
-            )}
+            {error && <p className="text-[12px] text-destructive">{error}</p>}
           </div>
           <div className="flex justify-end gap-2">
             <Button
@@ -1612,7 +1693,11 @@ function InviteUserDialog({
             >
               Cancel
             </Button>
-            <Button type="submit" size="sm" disabled={submitting || !username.trim()}>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={submitting || !username.trim()}
+            >
               {submitting ? "Sending…" : "Send Invite"}
             </Button>
           </div>
@@ -1635,7 +1720,7 @@ function TopNav({
     <header className="sticky top-0 z-30 flex h-14 items-center border-b bg-background/80 backdrop-blur-[12px] px-4 gap-4">
       <Link href="/chat" className="flex items-center gap-2 shrink-0">
         <MessageSquare className="h-5 w-5 text-primary" />
-        <span className="text-base font-semibold tracking-tight">Giga</span>
+        <span className="text-base font-semibold tracking-tight">Chatty</span>
       </Link>
 
       <div className="ml-auto flex items-center gap-2">
@@ -1655,20 +1740,23 @@ function TopNav({
 function RoomsSidebar({
   myRooms,
   socket,
-  onCollapse,
 }: {
   myRooms: MyRoom[];
   socket: ReturnType<typeof useSocket>["socket"];
-  onCollapse: () => void;
 }) {
   const queryClient = useQueryClient();
   const pathname = usePathname();
   const { getUnreadCount } = useUnread();
+  const { data: session } = authClient.useSession();
+  const currentUsername = session?.user?.name ?? "";
+  const currentEmail = session?.user?.email ?? "";
   const activeRoomId = pathname.startsWith("/chat/")
     ? pathname.split("/")[2]
     : null;
 
-  const [presence, setPresence] = useState<PresenceSnapshot>(() => getCachedPresence());
+  const [presence, setPresence] = useState<PresenceSnapshot>(() =>
+    getCachedPresence(),
+  );
 
   const publicRooms = myRooms.filter((r) => r.type === "public");
   const privateRooms = myRooms.filter((r) => r.type === "private");
@@ -1697,7 +1785,9 @@ function RoomsSidebar({
       });
 
       if (!res.ok) {
-        const err = (await res.json().catch(() => null)) as { error?: string } | null;
+        const err = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
         throw new Error(err?.error ?? "Failed to remove friend");
       }
 
@@ -1709,6 +1799,33 @@ function RoomsSidebar({
         queryClient.invalidateQueries({ queryKey: ["my-rooms"] }),
       ]);
       toast.success(`${username} was removed from friends`);
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
+
+  const banUserMutation = useMutation({
+    mutationFn: async ({
+      userId,
+      username,
+    }: {
+      userId: string;
+      username: string;
+    }) => {
+      const res = await fetch(`/api/users/${userId}/ban`, { method: "POST" });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(err?.error ?? "Failed to ban user");
+      }
+      return { username };
+    },
+    onSuccess: async ({ username }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["friends"] }),
+        queryClient.invalidateQueries({ queryKey: ["my-rooms"] }),
+      ]);
+      toast.success(`${username} was banned`);
     },
     onError: (error) => {
       toast.error(error.message);
@@ -1729,8 +1846,15 @@ function RoomsSidebar({
       void queryClient.invalidateQueries({ queryKey: ["my-rooms"] });
     };
 
-    const handleSnapshot = (snapshot: PresenceSnapshot) => setPresence(snapshot);
-    const handleUpdate = ({ userId, status }: { userId: string; status: PresenceStatus }) => {
+    const handleSnapshot = (snapshot: PresenceSnapshot) =>
+      setPresence(snapshot);
+    const handleUpdate = ({
+      userId,
+      status,
+    }: {
+      userId: string;
+      status: PresenceStatus;
+    }) => {
       setPresence((prev) => ({ ...prev, [userId]: status }));
     };
 
@@ -1753,20 +1877,11 @@ function RoomsSidebar({
 
   return (
     <aside className="flex w-[260px] shrink-0 flex-col border-r bg-card">
-      <div className="flex items-center gap-2 p-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Search…" className="h-8 pl-8 text-[13px]" />
+      <div className="flex h-12 shrink-0 items-center gap-2 px-3">
+        <div className="flex items-center gap-2">
+          <MessageSquare className="h-5 w-5 text-primary" />
+          <span className="text-base font-semibold tracking-tight">Chatty</span>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 shrink-0"
-          onClick={onCollapse}
-          title="Collapse sidebar"
-        >
-          <PanelLeftClose className="h-4 w-4" />
-        </Button>
       </div>
 
       <Separator />
@@ -1797,7 +1912,10 @@ function RoomsSidebar({
             <BrowseRoomsDialog onJoined={invalidateRooms} />
           </SidebarSection>
 
-          <SidebarSection title="Private Rooms">
+          <SidebarSection
+            title="Private Rooms"
+            action={<CreateRoomDialog onSuccess={invalidateRooms} trigger="icon" defaultType="private" />}
+          >
             {privateRooms.length === 0 ? (
               <p className="px-2 py-1 text-[12px] text-muted-foreground">
                 No rooms yet
@@ -1811,15 +1929,13 @@ function RoomsSidebar({
                   isPrivate
                   unread={getUnreadCount(room.id)}
                   isActive={activeRoomId === room.id}
-                  action={
-                    <InviteUserDialog roomId={room.id} trigger="icon" />
-                  }
+                  action={<InviteUserDialog roomId={room.id} trigger="icon" />}
                 />
               ))
             )}
           </SidebarSection>
 
-          <Separator className="mx-3" />
+          <Separator />
 
           <SidebarSection
             title="Contacts"
@@ -1827,7 +1943,9 @@ function RoomsSidebar({
               <AddFriendDialog
                 trigger="icon"
                 onSuccess={() => {
-                  void queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
+                  void queryClient.invalidateQueries({
+                    queryKey: ["friend-requests"],
+                  });
                 }}
               />
             }
@@ -1840,21 +1958,29 @@ function RoomsSidebar({
               friends.map((friend) => (
                 <ContactItem
                   key={friend.friendshipId}
-                  href={friend.directRoomId ? `/chat/${friend.directRoomId}` : "/chat"}
+                  href={
+                    friend.directRoomId
+                      ? `/chat/${friend.directRoomId}`
+                      : "/chat"
+                  }
                   name={friend.username}
                   presence={presence[friend.userId] ?? friend.presence}
-                  isActive={!!friend.directRoomId && activeRoomId === friend.directRoomId}
-                  unread={getUnreadCount(friend.directRoomId) || friend.unreadCount}
+                  isActive={
+                    !!friend.directRoomId &&
+                    activeRoomId === friend.directRoomId
+                  }
+                  unread={
+                    getUnreadCount(friend.directRoomId) || friend.unreadCount
+                  }
                   action={
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-7 w-7">
+                        <Button variant="ghost" size="icon" className="h-6 w-6">
                           <MoreHorizontal className="h-3.5 w-3.5" />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-40">
                         <DropdownMenuItem
-                          className="text-destructive focus:text-destructive"
                           onClick={() =>
                             removeFriendMutation.mutate({
                               friendshipId: friend.friendshipId,
@@ -1862,7 +1988,20 @@ function RoomsSidebar({
                             })
                           }
                         >
+                          <UserMinus className="h-4 w-4" />
                           Remove friend
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onClick={() =>
+                            banUserMutation.mutate({
+                              userId: friend.userId,
+                              username: friend.username,
+                            })
+                          }
+                        >
+                          <UserX className="h-4 w-4" />
+                          Ban user
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -1874,6 +2013,27 @@ function RoomsSidebar({
         </div>
       </ScrollArea>
 
+      <Separator />
+      <div className="py-2 px-1 space-y-0.5">
+        <FriendRequestsBell socket={socket} />
+        <InvitationBell socket={socket} />
+        <Separator className="my-1 -mx-1 w-auto" />
+        <div className="flex items-center gap-2 px-2 py-1.5 rounded-md">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[12px] font-semibold text-primary">
+            {(currentUsername || currentEmail).slice(0, 1).toUpperCase()}
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col">
+            {currentUsername && (
+              <span className="truncate text-[13px] font-medium leading-tight">{currentUsername}</span>
+            )}
+            {currentEmail && (
+              <span className="truncate text-[11px] text-muted-foreground leading-tight">{currentEmail}</span>
+            )}
+          </div>
+          <ProfileMenu iconOnly />
+          <LogoutButton iconOnly />
+        </div>
+      </div>
     </aside>
   );
 }
@@ -1886,15 +2046,30 @@ function ContextPanel({
   activeRoomId,
   myRooms,
   socket,
+  onCollapse,
 }: {
   activeRoomId: string | null;
   myRooms: MyRoom[];
   socket: ReturnType<typeof useSocket>["socket"];
+  onCollapse: () => void;
 }) {
   const queryClient = useQueryClient();
   const activeRoom = myRooms.find((r) => r.id === activeRoomId);
-  const [presence, setPresence] = useState<PresenceSnapshot>(() => getCachedPresence());
+  const [presence, setPresence] = useState<PresenceSnapshot>(() =>
+    getCachedPresence(),
+  );
   const { data: session } = authClient.useSession();
+
+  const { data: friendsData } = useQuery({
+    queryKey: ["friends"],
+    queryFn: async () => {
+      const res = await fetch("/api/friends");
+      if (!res.ok) throw new Error("Failed to fetch friends");
+      return res.json() as Promise<{ friends: Friend[] }>;
+    },
+    staleTime: 30_000,
+  });
+  const friendUserIds = new Set((friendsData?.friends ?? []).map((f) => f.userId));
 
   const { data: roomData, isLoading } = useQuery({
     queryKey: ["room-management", activeRoomId],
@@ -1930,7 +2105,8 @@ function ContextPanel({
       return;
     }
 
-    const handleSnapshot = (snapshot: PresenceSnapshot) => setPresence(snapshot);
+    const handleSnapshot = (snapshot: PresenceSnapshot) =>
+      setPresence(snapshot);
     const handleUpdate = ({
       userId,
       status,
@@ -1971,14 +2147,18 @@ function ContextPanel({
       });
 
       if (!response.ok) {
-        const error = (await response.json().catch(() => null)) as { error?: string } | null;
+        const error = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
         throw new Error(error?.error ?? "Request failed");
       }
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["friends"] }),
         queryClient.invalidateQueries({ queryKey: ["friend-requests"] }),
-        queryClient.invalidateQueries({ queryKey: ["room-management", activeRoomId] }),
+        queryClient.invalidateQueries({
+          queryKey: ["room-management", activeRoomId],
+        }),
       ]);
 
       toast.success(successMessage);
@@ -1999,8 +2179,8 @@ function ContextPanel({
 
   const canOpenManageRoom = Boolean(
     activeRoomId &&
-      activeRoom?.type !== "direct" &&
-      (roomData?.room.canManageMembers || roomData?.room.canDeleteRoom),
+    activeRoom?.type !== "direct" &&
+    (roomData?.room.canManageMembers || roomData?.room.canDeleteRoom),
   );
 
   return (
@@ -2013,13 +2193,15 @@ function ContextPanel({
               roomId={activeRoomId}
               onDeleted={() => {
                 if (session?.user?.id) {
-                  void queryClient.invalidateQueries({ queryKey: ["my-rooms"] });
+                  void queryClient.invalidateQueries({
+                    queryKey: ["my-rooms"],
+                  });
                 }
               }}
               trigger={
                 <button
                   type="button"
-                  className="rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors"
+                  className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground transition-colors"
                   title="Manage room"
                 >
                   <Settings className="h-3.5 w-3.5" />
@@ -2071,12 +2253,25 @@ function ContextPanel({
                 name={member.username}
                 role={member.role}
                 presence={member.presence}
+                isCurrentUser={session?.user?.id === member.userId}
                 canShowActions={session?.user?.id !== member.userId}
-                onAddFriend={(userId) => {
+                isFriend={friendUserIds.has(member.userId)}
+                onAddFriend={() => {
                   void runMemberAction({
                     url: "/api/friends/request",
                     body: { username: member.username },
                     successMessage: `Friend request sent to ${member.username}`,
+                  }).catch((error: Error) => {
+                    toast.error(error.message);
+                  });
+                }}
+                onRemoveFriend={() => {
+                  const friend = friendsData?.friends.find((f) => f.userId === member.userId);
+                  if (!friend) return;
+                  void runMemberAction({
+                    url: `/api/friends/${friend.friendshipId}`,
+                    method: "DELETE",
+                    successMessage: `${member.username} removed from friends`,
                   }).catch((error: Error) => {
                     toast.error(error.message);
                   });
@@ -2094,7 +2289,6 @@ function ContextPanel({
           )}
         </div>
       </ScrollArea>
-
     </aside>
   );
 }
@@ -2110,7 +2304,7 @@ export default function ChatLayout({
 }) {
   const { socket } = useSocket();
   useActivityHeartbeat(socket);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [contextPanelOpen, setContextPanelOpen] = useState(false);
   const queryClient = useQueryClient();
   const router = useRouter();
   const { data: session } = authClient.useSession();
@@ -2158,12 +2352,15 @@ export default function ChatLayout({
     const refreshRoom = (roomId?: string) => {
       void queryClient.invalidateQueries({ queryKey: ["my-rooms"] });
       if (roomId) {
-        void queryClient.invalidateQueries({ queryKey: ["room-management", roomId] });
+        void queryClient.invalidateQueries({
+          queryKey: ["room-management", roomId],
+        });
         void queryClient.invalidateQueries({ queryKey: ["messages", roomId] });
       }
     };
 
-    const onMemberJoined = ({ roomId }: { roomId: string }) => refreshRoom(roomId);
+    const onMemberJoined = ({ roomId }: { roomId: string }) =>
+      refreshRoom(roomId);
     const onMemberLeft = ({
       roomId,
       userId,
@@ -2177,9 +2374,12 @@ export default function ChatLayout({
         router.push("/chat");
       }
     };
-    const onAdminUpdated = ({ roomId }: { roomId: string }) => refreshRoom(roomId);
-    const onBanRemoved = ({ roomId }: { roomId: string }) => refreshRoom(roomId);
-    const onRoomUpdated = ({ roomId }: { roomId: string }) => refreshRoom(roomId);
+    const onAdminUpdated = ({ roomId }: { roomId: string }) =>
+      refreshRoom(roomId);
+    const onBanRemoved = ({ roomId }: { roomId: string }) =>
+      refreshRoom(roomId);
+    const onRoomUpdated = ({ roomId }: { roomId: string }) =>
+      refreshRoom(roomId);
     const onFriendEvent = () => {
       void queryClient.invalidateQueries({ queryKey: ["friends"] });
       void queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
@@ -2238,39 +2438,42 @@ export default function ChatLayout({
       socket.off("user:banned", onFriendEvent);
       socket.off("message:new", onNewMessage);
     };
-  }, [activeRoomId, clearUnread, incrementUnread, queryClient, router, session?.user?.id, socket]);
+  }, [
+    activeRoomId,
+    clearUnread,
+    incrementUnread,
+    queryClient,
+    router,
+    session?.user?.id,
+    socket,
+  ]);
+
+  const activeRoom = myRooms.find((r) => r.id === activeRoomId);
+  const isDirect = activeRoom?.type === "direct";
+  const contextPanelAvailable = !!activeRoomId && !isDirect;
 
   return (
-    <div className="flex h-screen flex-col bg-background">
-      <TopNav socket={socket} />
+    <ContextPanelContext.Provider
+      value={{
+        open: contextPanelOpen,
+        toggle: () => setContextPanelOpen((o) => !o),
+        available: contextPanelAvailable,
+      }}
+    >
+      <div className="flex h-screen bg-background">
+        <RoomsSidebar myRooms={myRooms} socket={socket} />
 
-      <div className="flex flex-1 overflow-hidden">
-        {sidebarOpen ? (
-          <RoomsSidebar
+        <main className="flex flex-1 flex-col overflow-hidden">{children}</main>
+
+        {contextPanelAvailable && contextPanelOpen && (
+          <ContextPanel
+            activeRoomId={activeRoomId}
             myRooms={myRooms}
             socket={socket}
-            onCollapse={() => setSidebarOpen(false)}
+            onCollapse={() => setContextPanelOpen(false)}
           />
-        ) : (
-          <div className="flex shrink-0 flex-col items-center border-r bg-card py-2 px-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => setSidebarOpen(true)}
-              title="Expand sidebar"
-            >
-              <PanelLeftOpen className="h-4 w-4" />
-            </Button>
-          </div>
         )}
-
-        <main className="flex flex-1 flex-col overflow-hidden">
-          {children}
-        </main>
-
-        <ContextPanel activeRoomId={activeRoomId} myRooms={myRooms} socket={socket} />
       </div>
-    </div>
+    </ContextPanelContext.Provider>
   );
 }

@@ -15,7 +15,7 @@ export default async function HomePage() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center px-4 text-center">
       <h1 className="text-[56px] font-bold tracking-[-0.02em] leading-tight">
-        Giga
+        Chatty
       </h1>
       <p className="mt-3 max-w-md text-lg text-muted-foreground">
         Real-time chat for teams that move fast.

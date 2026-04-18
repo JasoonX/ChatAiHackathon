@@ -2,14 +2,12 @@
 
 ### Must fix (demo-breaking or judge-testable)
 
-- Top navigation bar layout doesn't make sense
-- When I remove a friend, it's not shown on their side until page refresh and no alert shown
+- When I remove a friend, it's not shown on their side until page refresh and no alert shown(not sure if need to show but still is a bit non-reactive)
 - DM read-only enforcement needs end-to-end manual verification
 - No eager client-side unread counter update from socket events (uses refetch)
 
 ### Should fix (visible UX issues)
 
-- Private rooms "+" button only invites to existing rooms, looks like it's for creating a new private room
 - Invite icon (UserPlus) position shifts depending on unread badge — stabilize position
 - Shouldn't show join button if already a member
 

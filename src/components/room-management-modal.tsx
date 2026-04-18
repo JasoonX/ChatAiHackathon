@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Shield, Trash2, UserMinus, UserPlus } from "lucide-react";
+import { Loader2, Shield, ShieldOff, Trash2, UserMinus, UserX } from "lucide-react";
 import { toast } from "sonner";
 
 import { authClient } from "@/lib/auth-client";
@@ -352,6 +352,9 @@ export function RoomManagementModal({
                       >
                         <div className="flex items-center gap-2">
                           <span className="font-medium">{member.username}</span>
+                          {session?.user?.id === member.userId && (
+                            <span className="text-[11px] text-muted-foreground">(you)</span>
+                          )}
                           {member.isOwner && <Badge variant="secondary">Owner</Badge>}
                         </div>
                         <div className="flex items-center gap-2">
@@ -361,30 +364,15 @@ export function RoomManagementModal({
                         <span className="capitalize">
                           {member.isOwner ? "Owner" : member.role}
                         </span>
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex items-center gap-0.5">
                           {member.isOwner ? (
-                            <span className="text-muted-foreground">No actions</span>
+                            <span className="text-xs text-muted-foreground/40">—</span>
                           ) : (
                             <>
-                              {member.role === "admin" && canRemoveAdminForTarget && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() =>
-                                    actionMutation.mutate({
-                                      url: `/api/rooms/${roomId}/admin/${member.userId}`,
-                                      method: "DELETE",
-                                      successMessage: `${member.username} is now a member`,
-                                    })
-                                  }
-                                >
-                                  Remove admin
-                                </Button>
-                              )}
                               {member.role === "member" && canManageMembersInUi && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
+                                <button
+                                  type="button"
+                                  className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                                   onClick={() =>
                                     actionMutation.mutate({
                                       url: `/api/rooms/${roomId}/admin/${member.userId}`,
@@ -393,41 +381,58 @@ export function RoomManagementModal({
                                     })
                                   }
                                 >
+                                  <Shield className="h-3.5 w-3.5" />
                                   Make admin
-                                </Button>
+                                </button>
+                              )}
+                              {member.role === "admin" && canRemoveAdminForTarget && (
+                                <button
+                                  type="button"
+                                  className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                                  onClick={() =>
+                                    actionMutation.mutate({
+                                      url: `/api/rooms/${roomId}/admin/${member.userId}`,
+                                      method: "DELETE",
+                                      successMessage: `${member.username} is now a member`,
+                                    })
+                                  }
+                                >
+                                  <ShieldOff className="h-3.5 w-3.5" />
+                                  Remove admin
+                                </button>
+                              )}
+                              {canManageMembersInUi && member.role === "member" && (
+                                <button
+                                  type="button"
+                                  className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                                  onClick={() =>
+                                    actionMutation.mutate({
+                                      url: `/api/rooms/${roomId}/member/${member.userId}`,
+                                      method: "DELETE",
+                                      successMessage: `${member.username} was removed from the room`,
+                                    })
+                                  }
+                                >
+                                  <UserMinus className="h-3.5 w-3.5" />
+                                  Remove
+                                </button>
                               )}
                               {canManageMembersInUi && (
-                                <>
-                                  <Button
-                                    size="sm"
-                                    variant="destructive"
-                                    onClick={() =>
-                                      actionMutation.mutate({
-                                        url: `/api/rooms/${roomId}/ban`,
-                                        method: "POST",
-                                        body: { userId: member.userId },
-                                        successMessage: `${member.username} was banned`,
-                                      })
-                                    }
-                                  >
-                                    Ban
-                                  </Button>
-                                  {member.role === "member" && (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() =>
-                                        actionMutation.mutate({
-                                          url: `/api/rooms/${roomId}/member/${member.userId}`,
-                                          method: "DELETE",
-                                          successMessage: `${member.username} was removed from the room`,
-                                        })
-                                      }
-                                    >
-                                      Remove from room
-                                    </Button>
-                                  )}
-                                </>
+                                <button
+                                  type="button"
+                                  className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-destructive transition-colors hover:bg-accent"
+                                  onClick={() =>
+                                    actionMutation.mutate({
+                                      url: `/api/rooms/${roomId}/ban`,
+                                      method: "POST",
+                                      body: { userId: member.userId },
+                                      successMessage: `${member.username} was banned`,
+                                    })
+                                  }
+                                >
+                                  <UserX className="h-3.5 w-3.5" />
+                                  Ban
+                                </button>
                               )}
                             </>
                           )}
@@ -458,7 +463,12 @@ export function RoomManagementModal({
                         className="flex items-center justify-between gap-3 rounded-md border p-3"
                       >
                         <div className="space-y-1">
-                          <p className="text-sm font-medium">{admin.username}</p>
+                          <p className="text-sm font-medium">
+                            {admin.username}
+                            {session?.user?.id === admin.userId && (
+                              <span className="ml-1 text-[11px] font-normal text-muted-foreground">(you)</span>
+                            )}
+                          </p>
                           <p className="text-xs text-muted-foreground">
                             {admin.isOwner
                               ? "Owner, cannot lose admin rights"

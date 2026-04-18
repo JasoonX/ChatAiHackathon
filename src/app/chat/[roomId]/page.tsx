@@ -14,13 +14,13 @@ import {
   Paperclip,
   Pencil,
   Reply,
+  Info,
   Send,
   Trash2,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import { useUnread } from "@/components/unread-provider";
+import { useContextPanel } from "@/components/context-panel-context";
 import { useSocket } from "@/hooks/use-socket";
 import { authClient } from "@/lib/auth-client";
 import type { AttachmentPayload, MessagePayload } from "@/lib/socket";
@@ -206,10 +207,6 @@ function MessageBubble({
     minute: "2-digit",
   });
 
-  const initials = (message.sender.name || message.sender.username)
-    .slice(0, 2)
-    .toUpperCase();
-
   const isDeleted = !!message.deletedAt;
   const isAuthor = currentUserId === message.sender.id;
   const canEdit = isAuthor && !isDeleted;
@@ -219,38 +216,29 @@ function MessageBubble({
 
   if (isDeleted) {
     return (
-      <div className="flex items-start gap-3">
-        <Avatar className="h-8 w-8 shrink-0 mt-0.5">
-          <AvatarFallback className="text-[11px]">{initials}</AvatarFallback>
-        </Avatar>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-baseline gap-2 mb-0.5">
-            <span className="text-[13px] font-semibold text-foreground">
-              {message.sender.name || message.sender.username}
-            </span>
-            <span className="text-[11px] text-muted-foreground">{time}</span>
-          </div>
-          <p className="text-[13px] italic text-muted-foreground">
-            This message was deleted
-          </p>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-baseline gap-2 mb-0.5">
+          <span className="text-[13px] font-semibold text-foreground">
+            {message.sender.name || message.sender.username}
+          </span>
+          <span className="text-[11px] text-muted-foreground">{time}</span>
         </div>
+        <p className="text-[13px] italic text-muted-foreground">
+          This message was deleted
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="group relative flex items-start gap-3">
-      <Avatar className="h-8 w-8 shrink-0 mt-0.5">
-        {message.sender.image && (
-          <AvatarImage src={message.sender.image} alt={message.sender.name} />
-        )}
-        <AvatarFallback className="text-[11px]">{initials}</AvatarFallback>
-      </Avatar>
-
+    <div className="group relative flex items-start">
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline gap-2 mb-0.5">
           <span className="text-[13px] font-semibold text-foreground">
             {message.sender.name || message.sender.username}
+            {isAuthor && (
+              <span className="ml-1 text-[11px] font-normal text-muted-foreground">(you)</span>
+            )}
           </span>
           <span className="text-[11px] text-muted-foreground">{time}</span>
           {message.editedAt && (
@@ -434,34 +422,20 @@ function EditableMessage({
       hour: "2-digit",
       minute: "2-digit",
     });
-    const initials = (message.sender.name || message.sender.username)
-      .slice(0, 2)
-      .toUpperCase();
 
     return (
-      <div className="flex items-start gap-3">
-        <Avatar className="h-8 w-8 shrink-0 mt-0.5">
-          {message.sender.image && (
-            <AvatarImage
-              src={message.sender.image}
-              alt={message.sender.name}
-            />
-          )}
-          <AvatarFallback className="text-[11px]">{initials}</AvatarFallback>
-        </Avatar>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-baseline gap-2 mb-0.5">
-            <span className="text-[13px] font-semibold text-foreground">
-              {message.sender.name || message.sender.username}
-            </span>
-            <span className="text-[11px] text-muted-foreground">{time}</span>
-          </div>
-          <InlineEditForm
-            message={message}
-            onSave={onSaveEdit}
-            onCancel={onCancelEdit}
-          />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-baseline gap-2 mb-0.5">
+          <span className="text-[13px] font-semibold text-foreground">
+            {message.sender.name || message.sender.username}
+          </span>
+          <span className="text-[11px] text-muted-foreground">{time}</span>
         </div>
+        <InlineEditForm
+          message={message}
+          onSave={onSaveEdit}
+          onCancel={onCancelEdit}
+        />
       </div>
     );
   }
@@ -503,6 +477,7 @@ export default function RoomPage() {
   const { data: session } = authClient.useSession();
   const currentUserId = session?.user?.id;
   const { clearUnread } = useUnread();
+  const { open: panelOpen, toggle: togglePanel, available: panelAvailable } = useContextPanel();
 
   const [msgs, setMsgs] = useState<MessagePayload[]>([]);
   const [oldestCursor, setOldestCursor] = useState<string | null>(null);
@@ -522,6 +497,7 @@ export default function RoomPage() {
   const bottomSentinelRef = useRef<HTMLDivElement>(null);
   const isAtBottomRef = useRef(true);
   const initialLoadedRef = useRef(false);
+  const pendingScrollRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -592,6 +568,7 @@ export default function RoomPage() {
     setReplyTo(null);
     setShowNewMsgPill(false);
     initialLoadedRef.current = false;
+    pendingScrollRef.current = false;
     isAtBottomRef.current = true;
 
     if (!socket) return;
@@ -605,7 +582,17 @@ export default function RoomPage() {
     setHasMore(initialData.hasMore);
     setOldestCursor(initialData.nextCursor);
     initialLoadedRef.current = false;
+    pendingScrollRef.current = true;
   }, [initialData]);
+
+  // Scroll to bottom once messages are actually in the DOM after initial load
+  useEffect(() => {
+    if (pendingScrollRef.current && viewportRef.current) {
+      viewportRef.current.scrollTop = viewportRef.current.scrollHeight;
+      pendingScrollRef.current = false;
+      initialLoadedRef.current = true;
+    }
+  }, [msgs]);
 
   useEffect(() => {
     let cancelled = false;
@@ -625,13 +612,7 @@ export default function RoomPage() {
     };
   }, [clearUnread, roomId]);
 
-  // Scroll to bottom after initial messages render
-  useEffect(() => {
-    if (initialData && !initialLoadedRef.current && viewportRef.current) {
-      viewportRef.current.scrollTop = viewportRef.current.scrollHeight;
-      initialLoadedRef.current = true;
-    }
-  }, [msgs, initialData]);
+
 
   // -------------------------------------------------------------------------
   // Socket: real-time messages
@@ -997,6 +978,14 @@ export default function RoomPage() {
     requestAnimationFrame(() => textareaRef.current?.focus());
   }, []);
 
+  // Auto-resize textarea
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [input]);
+
   // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------
@@ -1005,10 +994,21 @@ export default function RoomPage() {
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border/60 shrink-0 bg-background/80 backdrop-blur-sm">
-        <Hash className="h-4 w-4 text-muted-foreground" />
-        <span className="font-semibold text-[15px]">
+        <Hash className="h-4 w-4 text-muted-foreground shrink-0" />
+        <span className="font-semibold text-[15px] flex-1 truncate">
           {roomName ?? roomId}
         </span>
+        {panelAvailable && (
+          <Button
+            variant={panelOpen ? "secondary" : "ghost"}
+            size="icon"
+            className="h-8 w-8 shrink-0"
+            onClick={togglePanel}
+            title={panelOpen ? "Hide room info" : "Show room info"}
+          >
+            <Info className="h-4 w-4" />
+          </Button>
+        )}
       </div>
 
       {/* Messages viewport */}
@@ -1137,23 +1137,13 @@ export default function RoomPage() {
             You cannot message this user.
           </div>
         )}
-        <div className="flex items-end gap-2">
+        <div className="flex flex-col rounded-md border border-input bg-secondary focus-within:border-primary focus-within:ring-[3px] focus-within:ring-primary/25 transition-[border-color,box-shadow] duration-[120ms]">
           <input
             ref={fileInputRef}
             type="file"
             className="hidden"
             onChange={handleFileSelect}
           />
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-10 w-10 shrink-0 text-muted-foreground hover:text-foreground"
-            title="Attach file"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-          >
-            <Paperclip className="h-4 w-4" />
-          </Button>
           <Textarea
             ref={textareaRef}
             value={input}
@@ -1161,24 +1151,36 @@ export default function RoomPage() {
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             placeholder={pendingFile ? "Add a comment…" : "Message..."}
-            className="min-h-[40px] max-h-32 resize-none flex-1"
+            className="min-h-[36px] max-h-48 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 focus-visible:border-0 overflow-y-auto py-2 px-3"
             rows={1}
             disabled={sending || uploading || !canMessageDirect}
           />
-          <Button
-            size="icon"
-            disabled={
-              (!input.trim() && !pendingFile) ||
-              sending ||
-              uploading ||
-              !canMessageDirect
-            }
-            onClick={handleSend}
-            className="h-10 w-10 shrink-0"
-            title="Send"
-          >
-            <Send className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center justify-between px-1.5 pb-1.5">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              title="Attach file"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+            >
+              <Paperclip className="h-4 w-4" />
+            </Button>
+            <Button
+              size="icon"
+              disabled={
+                (!input.trim() && !pendingFile) ||
+                sending ||
+                uploading ||
+                !canMessageDirect
+              }
+              onClick={handleSend}
+              className="h-7 w-7"
+              title="Send"
+            >
+              <Send className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         </div>
         <p className="mt-1 text-[11px] text-muted-foreground">
           Enter to send · Shift+Enter for newline · Paste image to attach

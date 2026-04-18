@@ -1,4 +1,4 @@
-# Giga Design System — Reference
+# Chatty Design System — Reference
 
 Tokens applied in `globals.css`. Components styled in `src/components/ui/`.
 
@@ -12,16 +12,16 @@ Tokens applied in `globals.css`. Components styled in `src/components/ui/`.
 
 ## Color usage
 
-| Role | Token | Hex |
-|------|-------|-----|
-| Page background | `background` | #000000 |
-| Cards, panels | `card` / `secondary` | #131313 |
-| Overlays, hover | `popover` / `muted` / `accent` | #1a1a1a |
-| Primary text | `foreground` | #ffffff |
-| Secondary text | `muted-foreground` | #8a8f98 |
-| Brand / CTA | `primary` / `destructive` | #fe2c02 |
-| Links | `info` | #7ba3ff |
-| Success / Warning | `success` / `warning` | #3eb489 / #e0a94b |
+| Role              | Token                          | Hex               |
+| ----------------- | ------------------------------ | ----------------- |
+| Page background   | `background`                   | #000000           |
+| Cards, panels     | `card` / `secondary`           | #131313           |
+| Overlays, hover   | `popover` / `muted` / `accent` | #1a1a1a           |
+| Primary text      | `foreground`                   | #ffffff           |
+| Secondary text    | `muted-foreground`             | #8a8f98           |
+| Brand / CTA       | `primary` / `destructive`      | #fe2c02           |
+| Links             | `info`                         | #7ba3ff           |
+| Success / Warning | `success` / `warning`          | #3eb489 / #e0a94b |
 
 Borders: conceptually `rgba(255,255,255,0.08)`, mapped to `hsl(0 0% 15%)`.
 
@@ -53,14 +53,14 @@ Borders: conceptually `rgba(255,255,255,0.08)`, mapped to `hsl(0 0% 15%)`.
 
 ## Typography
 
-| Role | Size | Weight | Tracking |
-|------|------|--------|----------|
-| Display 1 | 56px | 700 | -0.02em |
-| Display 3 | 28px | 600 | -0.02em |
-| Display 4 | 20px | 600 | 0 |
-| Body | 14px/21px | 400 | 0 |
-| Caption | 12px | 400 | 0 |
-| Eyebrow | 11px | 600 | +0.08em, uppercase |
+| Role      | Size      | Weight | Tracking           |
+| --------- | --------- | ------ | ------------------ |
+| Display 1 | 56px      | 700    | -0.02em            |
+| Display 3 | 28px      | 600    | -0.02em            |
+| Display 4 | 20px      | 600    | 0                  |
+| Body      | 14px/21px | 400    | 0                  |
+| Caption   | 12px      | 400    | 0                  |
+| Eyebrow   | 11px      | 600    | +0.08em, uppercase |
 
 ## What we are NOT
 
