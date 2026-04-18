@@ -4,10 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ArrowDown,
   Download,
   FileIcon,
   Hash,
   Image as ImageIcon,
+  Loader2,
   MoreHorizontal,
   Paperclip,
   Pencil,
@@ -144,6 +146,38 @@ function AttachmentPreview({
       >
         <X className="h-3.5 w-3.5" />
       </Button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Date separator
+// ---------------------------------------------------------------------------
+
+function formatDateLabel(date: Date): string {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const diff = today.getTime() - target.getTime();
+  const oneDay = 86_400_000;
+
+  if (diff === 0) return "Today";
+  if (diff === oneDay) return "Yesterday";
+  return date.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+function DateSeparator({ date }: { date: Date }) {
+  return (
+    <div className="flex items-center gap-3 py-2">
+      <div className="flex-1 border-t border-border/40" />
+      <span className="text-[11px] font-medium text-muted-foreground shrink-0">
+        {formatDateLabel(date)}
+      </span>
+      <div className="flex-1 border-t border-border/40" />
     </div>
   );
 }
@@ -481,7 +515,11 @@ export default function RoomPage() {
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
 
+  const [showNewMsgPill, setShowNewMsgPill] = useState(false);
+
   const viewportRef = useRef<HTMLDivElement>(null);
+  const topSentinelRef = useRef<HTMLDivElement>(null);
+  const bottomSentinelRef = useRef<HTMLDivElement>(null);
   const isAtBottomRef = useRef(true);
   const initialLoadedRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -552,6 +590,7 @@ export default function RoomPage() {
     setHasMore(false);
     setEditingId(null);
     setReplyTo(null);
+    setShowNewMsgPill(false);
     initialLoadedRef.current = false;
     isAtBottomRef.current = true;
 
@@ -614,6 +653,8 @@ export default function RoomPage() {
             viewportRef.current.scrollTop = viewportRef.current.scrollHeight;
           }
         });
+      } else {
+        setShowNewMsgPill(true);
       }
     };
 
@@ -656,8 +697,10 @@ export default function RoomPage() {
   }, [socket, roomId]);
 
   // -------------------------------------------------------------------------
-  // Scroll tracking + infinite scroll
+  // Scroll tracking + infinite scroll (IntersectionObserver)
   // -------------------------------------------------------------------------
+
+  const loadOlderRef = useRef<(() => Promise<void>) | null>(null);
 
   const loadOlder = useCallback(async () => {
     if (!oldestCursor || !hasMore || loadingMore) return;
@@ -685,17 +728,54 @@ export default function RoomPage() {
     }
   }, [roomId, oldestCursor, hasMore, loadingMore]);
 
-  const handleScroll = useCallback(() => {
-    const el = viewportRef.current;
-    if (!el) return;
+  loadOlderRef.current = loadOlder;
 
-    isAtBottomRef.current =
-      el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  // Top sentinel: triggers loading older messages
+  useEffect(() => {
+    const sentinel = topSentinelRef.current;
+    const viewport = viewportRef.current;
+    if (!sentinel || !viewport) return;
 
-    if (el.scrollTop < 150 && hasMore && !loadingMore) {
-      void loadOlder();
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          void loadOlderRef.current?.();
+        }
+      },
+      { root: viewport, threshold: 0 },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, []);
+
+  // Bottom sentinel: tracks whether user is at the bottom
+  useEffect(() => {
+    const sentinel = bottomSentinelRef.current;
+    const viewport = viewportRef.current;
+    if (!sentinel || !viewport) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const atBottom = entries[0].isIntersecting;
+        isAtBottomRef.current = atBottom;
+        if (atBottom) {
+          setShowNewMsgPill(false);
+        }
+      },
+      { root: viewport, threshold: 0 },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    if (viewportRef.current) {
+      viewportRef.current.scrollTop = viewportRef.current.scrollHeight;
+      setShowNewMsgPill(false);
     }
-  }, [hasMore, loadingMore, loadOlder]);
+  }, []);
 
   // -------------------------------------------------------------------------
   // Send message
@@ -934,43 +1014,83 @@ export default function RoomPage() {
       {/* Messages viewport */}
       <div
         ref={viewportRef}
-        onScroll={handleScroll}
-        className="flex-1 overflow-y-auto"
+        className="relative flex-1 overflow-y-auto"
       >
         <div className="px-4 py-4 space-y-5">
+          {/* Top sentinel for infinite scroll */}
+          <div ref={topSentinelRef} className="h-px" />
+
           {loadingMore && (
-            <p className="py-2 text-center text-[12px] text-muted-foreground">
-              Loading older messages...
-            </p>
+            <div className="flex items-center justify-center gap-2 py-2">
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+              <span className="text-[12px] text-muted-foreground">
+                Loading history...
+              </span>
+            </div>
           )}
+
           {isLoading && (
-            <p className="py-8 text-center text-[12px] text-muted-foreground">
-              Loading...
-            </p>
+            <div className="flex items-center justify-center gap-2 py-8">
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              <span className="text-[12px] text-muted-foreground">
+                Loading...
+              </span>
+            </div>
           )}
+
           {!isLoading && msgs.length === 0 && (
             <p className="py-8 text-center text-[13px] text-muted-foreground">
               No messages yet. Say hello!
             </p>
           )}
-          {msgs.map((msg) => (
-            <EditableMessage
-              key={msg.id}
-              message={msg}
-              currentUserId={currentUserId}
-              isRoomAdminOrOwner={isRoomAdminOrOwner}
-              editingId={editingId}
-              onReply={handleReply}
-              onStartEdit={(m) => {
-                setEditingId(m.id);
-                setReplyTo(null);
-              }}
-              onSaveEdit={handleSaveEdit}
-              onCancelEdit={() => setEditingId(null)}
-              onDelete={handleDelete}
-            />
-          ))}
+
+          {msgs.map((msg, i) => {
+            const prevMsg = i > 0 ? msgs[i - 1] : null;
+            const msgDate = new Date(msg.createdAt);
+            const prevDate = prevMsg ? new Date(prevMsg.createdAt) : null;
+
+            const showDateSep =
+              !prevDate ||
+              msgDate.getFullYear() !== prevDate.getFullYear() ||
+              msgDate.getMonth() !== prevDate.getMonth() ||
+              msgDate.getDate() !== prevDate.getDate();
+
+            return (
+              <div key={msg.id}>
+                {showDateSep && <DateSeparator date={msgDate} />}
+                <EditableMessage
+                  message={msg}
+                  currentUserId={currentUserId}
+                  isRoomAdminOrOwner={isRoomAdminOrOwner}
+                  editingId={editingId}
+                  onReply={handleReply}
+                  onStartEdit={(m) => {
+                    setEditingId(m.id);
+                    setReplyTo(null);
+                  }}
+                  onSaveEdit={handleSaveEdit}
+                  onCancelEdit={() => setEditingId(null)}
+                  onDelete={handleDelete}
+                />
+              </div>
+            );
+          })}
+
+          {/* Bottom sentinel for tracking "at bottom" state */}
+          <div ref={bottomSentinelRef} className="h-px" />
         </div>
+
+        {/* "New messages" pill */}
+        {showNewMsgPill && (
+          <button
+            type="button"
+            onClick={scrollToBottom}
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground shadow-lg hover:bg-primary/90 transition-colors"
+          >
+            New messages
+            <ArrowDown className="h-3 w-3" />
+          </button>
+        )}
       </div>
 
       {/* Reply bar */}

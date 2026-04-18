@@ -1158,6 +1158,103 @@ function ChangePasswordDialog({
   );
 }
 
+function DeleteAccountDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const router = useRouter();
+  const [confirmValue, setConfirmValue] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const canDelete = confirmValue === "DELETE";
+
+  const handleDelete = async () => {
+    if (!canDelete) {
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const response = await fetch("/api/users/me", {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        toast.error(payload?.error ?? "Failed to delete account");
+        return;
+      }
+
+      toast.success("Account deleted");
+      onOpenChange(false);
+      router.replace("/login");
+      router.refresh();
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        onOpenChange(nextOpen);
+        if (!nextOpen) {
+          setConfirmValue("");
+        }
+      }}
+    >
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Delete Account</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            This will permanently delete your account, all rooms you own, and all
+            messages in those rooms. This cannot be undone.
+          </p>
+
+          <div className="space-y-2">
+            <label htmlFor="delete-account-confirm" className="text-sm font-medium">
+              Type DELETE to confirm
+            </label>
+            <Input
+              id="delete-account-confirm"
+              value={confirmValue}
+              onChange={(event) => setConfirmValue(event.target.value)}
+              placeholder="DELETE"
+              autoComplete="off"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => onOpenChange(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="destructive"
+              onClick={() => void handleDelete()}
+              disabled={!canDelete || submitting}
+            >
+              {submitting ? "Deleting…" : "Delete account"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Sessions dialog
 // ---------------------------------------------------------------------------
@@ -1331,6 +1428,7 @@ function SessionsDialog({
 
 function ProfileMenu() {
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
   const [sessionsOpen, setSessionsOpen] = useState(false);
 
   return (
@@ -1349,12 +1447,22 @@ function ProfileMenu() {
           <DropdownMenuItem onClick={() => setSessionsOpen(true)}>
             Active sessions
           </DropdownMenuItem>
+          <DropdownMenuItem
+            className="text-destructive focus:text-destructive"
+            onClick={() => setDeleteAccountOpen(true)}
+          >
+            Delete account
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
       <ChangePasswordDialog
         open={changePasswordOpen}
         onOpenChange={setChangePasswordOpen}
+      />
+      <DeleteAccountDialog
+        open={deleteAccountOpen}
+        onOpenChange={setDeleteAccountOpen}
       />
       <SessionsDialog open={sessionsOpen} onOpenChange={setSessionsOpen} />
     </>
