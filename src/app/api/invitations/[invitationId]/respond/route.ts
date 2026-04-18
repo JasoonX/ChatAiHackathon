@@ -1,6 +1,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 
 import { db } from "@/db";
+import { isValidUUID } from "@/lib/validate";
 import { roomBans, roomInvitations, roomMembers, rooms } from "@/db/schema/rooms";
 import { getIO } from "@/lib/socket-server";
 import { getCurrentUser } from "@/server/auth";
@@ -15,6 +16,9 @@ export async function POST(
   }
 
   const { invitationId } = await params;
+  if (!isValidUUID(invitationId)) {
+    return Response.json({ error: "Invalid invitation ID" }, { status: 400 });
+  }
 
   const body = (await req.json()) as { action?: string };
   if (body.action !== "accept" && body.action !== "reject") {

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { db } from "@/db";
+import { isValidUUID } from "@/lib/validate";
 import { friendRequests, friendships } from "@/db/schema/friends";
 import { users } from "@/db/schema/users";
 import { getIO } from "@/lib/socket-server";
@@ -40,6 +41,9 @@ export async function POST(request: Request, { params }: RouteContext) {
   }
 
   const { requestId } = await params;
+  if (!isValidUUID(requestId)) {
+    return NextResponse.json({ error: "Invalid request ID" }, { status: 400 });
+  }
 
   const [friendRequest] = await db
     .select()

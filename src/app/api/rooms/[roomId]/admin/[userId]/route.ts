@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { db } from "@/db";
+import { isValidUUID } from "@/lib/validate";
 import { roomMembers } from "@/db/schema/rooms";
 import { getIO } from "@/lib/socket-server";
 import { getCurrentUser } from "@/server/auth";
@@ -20,6 +21,10 @@ export async function POST(_request: Request, { params }: RouteContext) {
   }
 
   const { roomId, userId } = await params;
+  if (!isValidUUID(roomId) || !isValidUUID(userId)) {
+    return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+  }
+
   const context = await getRoomPermissionContext(roomId, user.id);
 
   if (!context || !context.actorMembership) {
@@ -69,6 +74,10 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
   }
 
   const { roomId, userId } = await params;
+  if (!isValidUUID(roomId) || !isValidUUID(userId)) {
+    return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+  }
+
   const context = await getRoomPermissionContext(roomId, user.id);
 
   if (!context || !context.actorMembership) {

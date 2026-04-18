@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -18,8 +18,18 @@ import { Label } from "@/components/ui/label";
 import { authClient } from "@/lib/auth-client";
 
 export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isPending, setIsPending] = useState(false);
+  const next = searchParams.get("next") ?? "/chat";
 
   return (
     <main className="flex min-h-screen items-center justify-center px-4">
@@ -56,7 +66,7 @@ export default function LoginPage() {
                 return;
               }
 
-              router.replace("/chat");
+              router.replace(next);
               router.refresh();
             }}
             className="space-y-4"
@@ -85,7 +95,7 @@ export default function LoginPage() {
               />
             </div>
 
-            <div className="flex items-center justify-between">
+            <div className="flex items-center">
               <label
                 htmlFor="remember"
                 className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none"
@@ -99,12 +109,6 @@ export default function LoginPage() {
                 />
                 Keep me signed in
               </label>
-              <Link
-                href="#"
-                className="text-sm text-info hover:underline underline-offset-4"
-              >
-                Forgot password?
-              </Link>
             </div>
 
             <Button type="submit" className="w-full" disabled={isPending}>

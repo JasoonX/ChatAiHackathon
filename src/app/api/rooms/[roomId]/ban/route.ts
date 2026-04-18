@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { db } from "@/db";
+import { isValidUUID } from "@/lib/validate";
 import { roomBans, roomMembers } from "@/db/schema/rooms";
 import { users } from "@/db/schema/users";
 import { getIO } from "@/lib/socket-server";
@@ -22,6 +23,10 @@ export async function POST(request: Request, { params }: RouteContext) {
   }
 
   const { roomId } = await params;
+  if (!isValidUUID(roomId)) {
+    return NextResponse.json({ error: "Invalid room ID" }, { status: 400 });
+  }
+
   const context = await getRoomPermissionContext(roomId, user.id);
 
   if (!context || !context.actorMembership) {

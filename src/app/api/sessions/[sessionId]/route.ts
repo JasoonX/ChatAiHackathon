@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 
 import { db } from "@/db";
+import { isValidUUID } from "@/lib/validate";
 import { sessions } from "@/db/schema/users";
 import { getCurrentSession } from "@/server/auth";
 import { getIO } from "@/lib/socket-server";
@@ -16,6 +17,9 @@ export async function DELETE(
   }
 
   const { sessionId } = await params;
+  if (!isValidUUID(sessionId)) {
+    return NextResponse.json({ error: "Invalid session ID" }, { status: 400 });
+  }
 
   if (sessionId === currentSession.session.id) {
     return NextResponse.json(

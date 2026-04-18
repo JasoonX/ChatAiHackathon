@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -49,30 +49,78 @@ function formatFileSize(bytes: number): string {
 // Attachment display (inside message bubble)
 // ---------------------------------------------------------------------------
 
+function ImageLightbox({
+  src,
+  alt,
+  onClose,
+}: {
+  src: string;
+  alt: string;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <button
+        type="button"
+        onClick={onClose}
+        className="absolute top-4 right-4 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
+        aria-label="Close"
+      >
+        <X className="h-4 w-4" />
+      </button>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={alt}
+        className="max-h-[90vh] max-w-[90vw] rounded-md object-contain shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      />
+    </div>
+  );
+}
+
 function AttachmentDisplay({ attachment }: { attachment: AttachmentPayload }) {
   const isImage = attachment.mimeType.startsWith("image/");
   const downloadUrl = `/api/attachments/${attachment.id}`;
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   if (isImage) {
     return (
       <div className="mt-1.5">
-        <a
-          href={downloadUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block max-w-xs rounded-md overflow-hidden border border-border/60 hover:border-border transition-colors"
+        <button
+          type="button"
+          onClick={() => setLightboxOpen(true)}
+          className="block w-fit rounded-md overflow-hidden border border-border/60 hover:border-border transition-colors cursor-zoom-in"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={downloadUrl}
             alt={attachment.originalFilename}
-            className="max-h-60 w-auto object-contain"
+            className="max-h-60 max-w-xs w-auto object-contain"
             loading="lazy"
           />
-        </a>
+        </button>
         <p className="mt-0.5 text-[11px] text-muted-foreground">
           {attachment.originalFilename} · {formatFileSize(attachment.byteSize)}
         </p>
+        {lightboxOpen && (
+          <ImageLightbox
+            src={downloadUrl}
+            alt={attachment.originalFilename}
+            onClose={() => setLightboxOpen(false)}
+          />
+        )}
       </div>
     );
   }
@@ -113,6 +161,7 @@ function AttachmentPreview({
 }) {
   const isImage = file.type.startsWith("image/");
   const [preview, setPreview] = useState<string | null>(null);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   useEffect(() => {
     if (!isImage) return;
@@ -124,12 +173,19 @@ function AttachmentPreview({
   return (
     <div className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/30 px-3 py-2">
       {isImage && preview ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={preview}
-          alt={file.name}
-          className="h-10 w-10 rounded object-cover shrink-0"
-        />
+        <button
+          type="button"
+          onClick={() => setLightboxOpen(true)}
+          className="shrink-0 cursor-zoom-in rounded overflow-hidden"
+          title="Preview image"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={preview}
+            alt={file.name}
+            className="h-10 w-10 rounded object-cover"
+          />
+        </button>
       ) : (
         <FileIcon className="h-5 w-5 shrink-0 text-muted-foreground" />
       )}
@@ -147,6 +203,13 @@ function AttachmentPreview({
       >
         <X className="h-3.5 w-3.5" />
       </Button>
+      {lightboxOpen && preview && (
+        <ImageLightbox
+          src={preview}
+          alt={file.name}
+          onClose={() => setLightboxOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -191,6 +254,7 @@ function MessageBubble({
   message,
   currentUserId,
   isRoomAdminOrOwner,
+  grouped = false,
   onReply,
   onEdit,
   onDelete,
@@ -198,6 +262,7 @@ function MessageBubble({
   message: MessagePayload;
   currentUserId: string | undefined;
   isRoomAdminOrOwner: boolean;
+  grouped?: boolean;
   onReply: (msg: MessagePayload) => void;
   onEdit: (msg: MessagePayload) => void;
   onDelete: (msg: MessagePayload) => void;
@@ -226,6 +291,55 @@ function MessageBubble({
         <p className="text-[13px] italic text-muted-foreground">
           This message was deleted
         </p>
+      </div>
+    );
+  }
+
+  if (grouped) {
+    return (
+      <div className="group relative flex items-start">
+        <div className="flex-1 min-w-0">
+          {message.content && (
+            <p className="text-[13px] leading-relaxed text-foreground/90 whitespace-pre-wrap break-words">
+              {message.content}
+              <span className="ml-2 text-[10px] text-muted-foreground align-baseline">{time}</span>
+            </p>
+          )}
+          {message.attachments?.map((att) => (
+            <AttachmentDisplay key={att.id} attachment={att} />
+          ))}
+        </div>
+        {showMenu && (
+          <div className="absolute right-0 top-0 opacity-0 group-hover:opacity-100 transition-opacity">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-36">
+                {canReply && (
+                  <DropdownMenuItem onClick={() => onReply(message)}>
+                    <Reply className="mr-2 h-4 w-4" />
+                    Reply
+                  </DropdownMenuItem>
+                )}
+                {canEdit && (
+                  <DropdownMenuItem onClick={() => onEdit(message)}>
+                    <Pencil className="mr-2 h-4 w-4" />
+                    Edit
+                  </DropdownMenuItem>
+                )}
+                {canDelete && (
+                  <DropdownMenuItem onClick={() => onDelete(message)} className="text-destructive focus:text-destructive">
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )}
       </div>
     );
   }
@@ -401,6 +515,7 @@ function EditableMessage({
   currentUserId,
   isRoomAdminOrOwner,
   editingId,
+  grouped = false,
   onReply,
   onStartEdit,
   onSaveEdit,
@@ -411,6 +526,7 @@ function EditableMessage({
   currentUserId: string | undefined;
   isRoomAdminOrOwner: boolean;
   editingId: string | null;
+  grouped?: boolean;
   onReply: (msg: MessagePayload) => void;
   onStartEdit: (msg: MessagePayload) => void;
   onSaveEdit: (messageId: string, content: string) => void;
@@ -445,6 +561,7 @@ function EditableMessage({
       message={message}
       currentUserId={currentUserId}
       isRoomAdminOrOwner={isRoomAdminOrOwner}
+      grouped={grouped}
       onReply={onReply}
       onEdit={onStartEdit}
       onDelete={onDelete}
@@ -487,7 +604,7 @@ export default function RoomPage() {
   const [sending, setSending] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<MessagePayload | null>(null);
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
 
   const [showNewMsgPill, setShowNewMsgPill] = useState(false);
@@ -545,7 +662,7 @@ export default function RoomPage() {
   // Initial fetch
   // -------------------------------------------------------------------------
 
-  const { data: initialData, isLoading } = useQuery({
+  const { data: initialData, isLoading, error: messagesError } = useQuery({
     queryKey: ["messages", roomId],
     queryFn: async () => {
       const res = await fetch(`/api/rooms/${roomId}/messages?limit=50`);
@@ -559,7 +676,9 @@ export default function RoomPage() {
     gcTime: 0,
   });
 
-  // Subscribe socket to this room's channel and reset state on room change
+  // Reset local state when navigating to a different room.
+  // Intentionally only depends on roomId so that a socket reconnect does NOT
+  // clear messages (which would lose loaded data until the next refetch).
   useEffect(() => {
     setMsgs([]);
     setOldestCursor(null);
@@ -570,7 +689,11 @@ export default function RoomPage() {
     initialLoadedRef.current = false;
     pendingScrollRef.current = false;
     isAtBottomRef.current = true;
+  }, [roomId]);
 
+  // Subscribe the socket to this room's channel.
+  // Runs on roomId change AND when socket first connects / reconnects.
+  useEffect(() => {
     if (!socket) return;
     socket.emit("room:subscribe", roomId);
   }, [roomId, socket]);
@@ -585,8 +708,12 @@ export default function RoomPage() {
     pendingScrollRef.current = true;
   }, [initialData]);
 
-  // Scroll to bottom once messages are actually in the DOM after initial load
-  useEffect(() => {
+  // Scroll to bottom once messages are actually in the DOM after initial load.
+  // useLayoutEffect fires synchronously after DOM mutations and BEFORE the
+  // browser paints and before IntersectionObserver callbacks.  This prevents
+  // the top-sentinel observer from seeing scrollTop=0 and triggering loadOlder
+  // before we've had a chance to jump to the bottom.
+  useLayoutEffect(() => {
     if (pendingScrollRef.current && viewportRef.current) {
       viewportRef.current.scrollTop = viewportRef.current.scrollHeight;
       pendingScrollRef.current = false;
@@ -824,12 +951,14 @@ export default function RoomPage() {
   // Upload attachment
   // -------------------------------------------------------------------------
 
-  const uploadFile = useCallback(async () => {
-    if (!pendingFile || uploading || !canMessageDirect) return;
+  const uploadFiles = useCallback(async () => {
+    if (pendingFiles.length === 0 || uploading || !canMessageDirect) return;
     setUploading(true);
 
     const formData = new FormData();
-    formData.append("file", pendingFile);
+    for (const file of pendingFiles) {
+      formData.append("files", file);
+    }
     const comment = input.trim();
     if (comment) formData.append("comment", comment);
 
@@ -848,21 +977,21 @@ export default function RoomPage() {
       // The upload endpoint broadcasts via socket, so the message will
       // appear via the message:new listener. Just clear the input.
       setInput("");
-      setPendingFile(null);
+      setPendingFiles([]);
     } catch {
       toast.error("Upload failed");
     } finally {
       setUploading(false);
     }
-  }, [pendingFile, uploading, input, roomId, canMessageDirect]);
+  }, [pendingFiles, uploading, input, roomId, canMessageDirect]);
 
   const handleSend = useCallback(() => {
-    if (pendingFile) {
-      void uploadFile();
+    if (pendingFiles.length > 0) {
+      void uploadFiles();
     } else {
       sendMessage();
     }
-  }, [pendingFile, uploadFile, sendMessage]);
+  }, [pendingFiles, uploadFiles, sendMessage]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -870,8 +999,8 @@ export default function RoomPage() {
       handleSend();
     }
     if (e.key === "Escape") {
-      if (pendingFile) {
-        setPendingFile(null);
+      if (pendingFiles.length > 0) {
+        setPendingFiles([]);
       } else if (replyTo) {
         setReplyTo(null);
       }
@@ -885,13 +1014,16 @@ export default function RoomPage() {
   const handlePaste = useCallback(
     (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
       const items = e.clipboardData.items;
+      const imageFiles: File[] = [];
       for (const item of items) {
         if (item.type.startsWith("image/")) {
-          e.preventDefault();
           const file = item.getAsFile();
-          if (file) setPendingFile(file);
-          return;
+          if (file) imageFiles.push(file);
         }
+      }
+      if (imageFiles.length > 0) {
+        e.preventDefault();
+        setPendingFiles((prev) => [...prev, ...imageFiles]);
       }
     },
     [],
@@ -899,8 +1031,10 @@ export default function RoomPage() {
 
   const handleFileSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) setPendingFile(file);
+      const selected = Array.from(e.target.files ?? []);
+      if (selected.length > 0) {
+        setPendingFiles((prev) => [...prev, ...selected]);
+      }
       // Reset input so same file can be re-selected
       e.target.value = "";
     },
@@ -990,6 +1124,27 @@ export default function RoomPage() {
   // Render
   // -------------------------------------------------------------------------
 
+  if (messagesError) {
+    const is403 = messagesError.message === "Not a room member";
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center px-6">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+          <Hash className="h-6 w-6 text-muted-foreground" />
+        </div>
+        <div className="space-y-1">
+          <p className="text-[15px] font-medium">
+            {is403 ? "Room not found" : "Something went wrong"}
+          </p>
+          <p className="text-[13px] text-muted-foreground">
+            {is403
+              ? "This room doesn't exist or you don't have access to it."
+              : messagesError.message}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Header */}
@@ -1016,7 +1171,7 @@ export default function RoomPage() {
         ref={viewportRef}
         className="relative flex-1 overflow-y-auto"
       >
-        <div className="px-4 py-4 space-y-5">
+        <div className="px-4 py-4">
           {/* Top sentinel for infinite scroll */}
           <div ref={topSentinelRef} className="h-px" />
 
@@ -1055,14 +1210,22 @@ export default function RoomPage() {
               msgDate.getMonth() !== prevDate.getMonth() ||
               msgDate.getDate() !== prevDate.getDate();
 
+            const grouped =
+              !showDateSep &&
+              !!prevMsg &&
+              prevMsg.sender.id === msg.sender.id &&
+              !prevMsg.deletedAt &&
+              msgDate.getTime() - new Date(prevMsg.createdAt).getTime() < 5 * 60 * 1000;
+
             return (
-              <div key={msg.id}>
+              <div key={msg.id} className={grouped ? "mt-0.5" : "mt-3"}>
                 {showDateSep && <DateSeparator date={msgDate} />}
                 <EditableMessage
                   message={msg}
                   currentUserId={currentUserId}
                   isRoomAdminOrOwner={isRoomAdminOrOwner}
                   editingId={editingId}
+                  grouped={grouped}
                   onReply={handleReply}
                   onStartEdit={(m) => {
                     setEditingId(m.id);
@@ -1120,13 +1283,18 @@ export default function RoomPage() {
         </div>
       )}
 
-      {/* Attachment preview */}
-      {pendingFile && (
-        <div className="px-4 pt-2 shrink-0">
-          <AttachmentPreview
-            file={pendingFile}
-            onRemove={() => setPendingFile(null)}
-          />
+      {/* Attachment previews */}
+      {pendingFiles.length > 0 && (
+        <div className="px-4 pt-2 shrink-0 flex flex-col gap-1">
+          {pendingFiles.map((file, i) => (
+            <AttachmentPreview
+              key={`${file.name}-${i}`}
+              file={file}
+              onRemove={() =>
+                setPendingFiles((prev) => prev.filter((_, idx) => idx !== i))
+              }
+            />
+          ))}
         </div>
       )}
 
@@ -1141,6 +1309,7 @@ export default function RoomPage() {
           <input
             ref={fileInputRef}
             type="file"
+            multiple
             className="hidden"
             onChange={handleFileSelect}
           />
@@ -1150,7 +1319,7 @@ export default function RoomPage() {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder={pendingFile ? "Add a comment…" : "Message..."}
+            placeholder={pendingFiles.length > 0 ? "Add a comment…" : "Message..."}
             className="min-h-[36px] max-h-48 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 focus-visible:border-0 overflow-y-auto py-2 px-3"
             rows={1}
             disabled={sending || uploading || !canMessageDirect}
@@ -1169,7 +1338,7 @@ export default function RoomPage() {
             <Button
               size="icon"
               disabled={
-                (!input.trim() && !pendingFile) ||
+                (!input.trim() && pendingFiles.length === 0) ||
                 sending ||
                 uploading ||
                 !canMessageDirect
@@ -1183,7 +1352,7 @@ export default function RoomPage() {
           </div>
         </div>
         <p className="mt-1 text-[11px] text-muted-foreground">
-          Enter to send · Shift+Enter for newline · Paste image to attach
+          Enter to send · Shift+Enter for newline · Paste or attach multiple files
         </p>
       </div>
     </div>

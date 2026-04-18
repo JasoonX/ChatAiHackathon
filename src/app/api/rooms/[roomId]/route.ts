@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { db } from "@/db";
 import { rooms } from "@/db/schema/rooms";
+import { isValidUUID } from "@/lib/validate";
 import { getIO } from "@/lib/socket-server";
 import { getCurrentUser } from "@/server/auth";
 import {
@@ -28,6 +29,10 @@ export async function GET(_request: Request, { params }: RouteContext) {
   }
 
   const { roomId } = await params;
+  if (!isValidUUID(roomId)) {
+    return NextResponse.json({ error: "Invalid room ID" }, { status: 400 });
+  }
+
   const snapshot = await getRoomManagementSnapshot(roomId, user.id);
 
   if (!snapshot) {
@@ -44,6 +49,10 @@ export async function PATCH(request: Request, { params }: RouteContext) {
   }
 
   const { roomId } = await params;
+  if (!isValidUUID(roomId)) {
+    return NextResponse.json({ error: "Invalid room ID" }, { status: 400 });
+  }
+
   const context = await getRoomPermissionContext(roomId, user.id);
 
   if (!context) {
@@ -122,6 +131,10 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
   }
 
   const { roomId } = await params;
+  if (!isValidUUID(roomId)) {
+    return NextResponse.json({ error: "Invalid room ID" }, { status: 400 });
+  }
+
   const context = await getRoomPermissionContext(roomId, user.id);
 
   if (!context) {

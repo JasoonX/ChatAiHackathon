@@ -41,7 +41,6 @@ import { ContextPanelContext } from "@/components/context-panel-context";
 import type { InvitationPayload } from "@/lib/socket";
 import type { PresenceSnapshot, PresenceStatus } from "@/lib/socket";
 import { RoomManagementModal } from "@/components/room-management-modal";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -110,6 +109,7 @@ type FriendRequest = {
   requesterUsername: string;
   requesterName: string;
   requesterImage: string | null;
+  message: string | null;
   createdAt: string;
 };
 
@@ -213,6 +213,7 @@ function RoomItem({
   unread = 0,
   isActive = false,
   action,
+  onMouseEnter,
 }: {
   id: string;
   name: string;
@@ -220,9 +221,11 @@ function RoomItem({
   unread?: number;
   isActive?: boolean;
   action?: React.ReactNode;
+  onMouseEnter?: () => void;
 }) {
   return (
     <div
+      onMouseEnter={onMouseEnter}
       className={`group/room flex w-full items-center rounded-md text-[13px] transition-colors ${
         isActive
           ? "bg-accent text-foreground"
@@ -240,16 +243,24 @@ function RoomItem({
         )}
         <span className="truncate">{name}</span>
       </Link>
-      {unread > 0 && (
-        <Badge variant="default" className="text-[10px] px-1.5 py-0 mr-1">
-          {unread}
-        </Badge>
-      )}
-      {action && (
-        <div className="flex items-center opacity-0 group-hover/room:opacity-100 transition-opacity shrink-0 pr-1">
-          {action}
-        </div>
-      )}
+      <div className="shrink-0 pr-1">
+        {action ? (
+          <>
+            {unread > 0 && (
+              <Badge variant="default" className="text-[10px] px-1.5 py-0 group-hover/room:hidden">
+                {unread}
+              </Badge>
+            )}
+            <div className={`flex items-center transition-opacity ${unread > 0 ? "hidden group-hover/room:flex" : "opacity-0 group-hover/room:opacity-100 flex"}`}>
+              {action}
+            </div>
+          </>
+        ) : unread > 0 ? (
+          <Badge variant="default" className="text-[10px] px-1.5 py-0">
+            {unread}
+          </Badge>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -265,6 +276,7 @@ function ContactItem({
   unread,
   isActive = false,
   action,
+  onMouseEnter,
 }: {
   href: string;
   name: string;
@@ -272,9 +284,11 @@ function ContactItem({
   unread: number;
   isActive?: boolean;
   action?: React.ReactNode;
+  onMouseEnter?: () => void;
 }) {
   return (
     <div
+      onMouseEnter={onMouseEnter}
       className={`group/contact flex w-full items-center rounded-md text-[13px] transition-colors ${isActive ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground"}`}
     >
       <Link
@@ -284,16 +298,24 @@ function ContactItem({
         <PresenceDot status={presence} />
         <span className="truncate">{name}</span>
       </Link>
-      {unread > 0 && (
-        <Badge variant="default" className="text-[10px] px-1.5 py-0 mr-1">
-          {unread}
-        </Badge>
-      )}
-      {action && (
-        <div className="shrink-0 opacity-0 transition-opacity group-hover/contact:opacity-100 pr-1">
-          {action}
-        </div>
-      )}
+      <div className="shrink-0 pr-1">
+        {action ? (
+          <>
+            {unread > 0 && (
+              <Badge variant="default" className="text-[10px] px-1.5 py-0 group-hover/contact:hidden">
+                {unread}
+              </Badge>
+            )}
+            <div className={`flex items-center transition-opacity ${unread > 0 ? "hidden group-hover/contact:flex" : "opacity-0 group-hover/contact:opacity-100 flex"}`}>
+              {action}
+            </div>
+          </>
+        ) : unread > 0 ? (
+          <Badge variant="default" className="text-[10px] px-1.5 py-0">
+            {unread}
+          </Badge>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -334,11 +356,7 @@ function MemberItem({
 
   return (
     <div className="flex items-center gap-2 px-3 py-1.5">
-      <Avatar className="h-7 w-7">
-        <AvatarFallback className="text-[11px]">
-          {name.slice(0, 2).toUpperCase()}
-        </AvatarFallback>
-      </Avatar>
+      <PresenceDot status={presence} />
       <span className="flex-1 truncate text-[13px]">
         {name}
         {isCurrentUser && (
@@ -350,7 +368,6 @@ function MemberItem({
           {role}
         </Badge>
       )}
-      <PresenceDot status={presence} />
       {canShowActions && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -713,6 +730,7 @@ function AddFriendDialog({
 }) {
   const [open, setOpen] = useState(false);
   const [username, setUsername] = useState("");
+  const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -728,7 +746,10 @@ function AddFriendDialog({
       const res = await fetch("/api/friends/request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: username.trim() }),
+        body: JSON.stringify({
+          username: username.trim(),
+          message: message.trim() || undefined,
+        }),
       });
 
       if (!res.ok) {
@@ -739,6 +760,7 @@ function AddFriendDialog({
 
       toast.success(`Friend request sent to ${username.trim()}`);
       setUsername("");
+      setMessage("");
       setOpen(false);
       onSuccess?.();
     } finally {
@@ -786,6 +808,29 @@ function AddFriendDialog({
               }}
             />
             {error && <p className="text-[12px] text-destructive">{error}</p>}
+          </div>
+          <div className="space-y-2">
+            <label
+              htmlFor="friend-message"
+              className="text-[13px] font-medium"
+            >
+              Message{" "}
+              <span className="text-muted-foreground font-normal">(optional)</span>
+            </label>
+            <textarea
+              id="friend-message"
+              placeholder="Say hi…"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              maxLength={280}
+              rows={3}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-[13px] placeholder:text-muted-foreground resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+            {message.length > 0 && (
+              <p className="text-[11px] text-muted-foreground text-right">
+                {message.length}/280
+              </p>
+            )}
           </div>
           <div className="flex justify-end gap-2">
             <Button
@@ -1077,50 +1122,54 @@ function FriendRequestsBell({
               {requests.map((request) => (
                 <div
                   key={request.id}
-                  className="flex items-center gap-3 rounded-md border bg-card p-3"
+                  className="rounded-md border bg-card p-3 space-y-2"
                 >
-                  <Avatar className="h-8 w-8">
-                    <AvatarFallback className="text-[11px]">
-                      {request.requesterUsername.slice(0, 2).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-medium truncate">
-                      {request.requesterUsername}
-                    </p>
-                    <p className="text-[12px] text-muted-foreground truncate">
-                      {request.requesterName}
-                    </p>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] font-medium truncate">
+                        {request.requesterUsername}
+                      </p>
+                      {request.requesterName && (
+                        <p className="text-[12px] text-muted-foreground truncate">
+                          {request.requesterName}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex gap-1.5 shrink-0">
+                      <Button
+                        size="sm"
+                        className="h-7 px-2 text-[12px]"
+                        disabled={respond.isPending}
+                        onClick={() =>
+                          respond.mutate({
+                            requestId: request.id,
+                            action: "accept",
+                          })
+                        }
+                      >
+                        Accept
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 px-2 text-[12px]"
+                        disabled={respond.isPending}
+                        onClick={() =>
+                          respond.mutate({
+                            requestId: request.id,
+                            action: "reject",
+                          })
+                        }
+                      >
+                        Reject
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex gap-1.5 shrink-0">
-                    <Button
-                      size="sm"
-                      className="h-7 px-2 text-[12px]"
-                      disabled={respond.isPending}
-                      onClick={() =>
-                        respond.mutate({
-                          requestId: request.id,
-                          action: "accept",
-                        })
-                      }
-                    >
-                      Accept
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 px-2 text-[12px]"
-                      disabled={respond.isPending}
-                      onClick={() =>
-                        respond.mutate({
-                          requestId: request.id,
-                          action: "reject",
-                        })
-                      }
-                    >
-                      Reject
-                    </Button>
-                  </div>
+                  {request.message && (
+                    <p className="text-[12px] text-muted-foreground bg-muted/50 rounded px-2 py-1.5 italic">
+                      &ldquo;{request.message}&rdquo;
+                    </p>
+                  )}
                 </div>
               ))}
             </div>
@@ -1745,7 +1794,24 @@ function RoomsSidebar({
   socket: ReturnType<typeof useSocket>["socket"];
 }) {
   const queryClient = useQueryClient();
+  const router = useRouter();
   const pathname = usePathname();
+
+  const prefetchRoom = useCallback(
+    (roomId: string) => {
+      router.prefetch(`/chat/${roomId}`);
+      void queryClient.prefetchQuery({
+        queryKey: ["messages", roomId],
+        queryFn: async () => {
+          const res = await fetch(`/api/rooms/${roomId}/messages?limit=50`);
+          if (!res.ok) throw new Error("Failed to fetch messages");
+          return res.json();
+        },
+        staleTime: 30_000,
+      });
+    },
+    [router, queryClient],
+  );
   const { getUnreadCount } = useUnread();
   const { data: session } = authClient.useSession();
   const currentUsername = session?.user?.name ?? "";
@@ -1906,6 +1972,7 @@ function RoomsSidebar({
                   name={room.name}
                   unread={getUnreadCount(room.id)}
                   isActive={activeRoomId === room.id}
+                  onMouseEnter={() => prefetchRoom(room.id)}
                 />
               ))
             )}
@@ -1930,6 +1997,7 @@ function RoomsSidebar({
                   unread={getUnreadCount(room.id)}
                   isActive={activeRoomId === room.id}
                   action={<InviteUserDialog roomId={room.id} trigger="icon" />}
+                  onMouseEnter={() => prefetchRoom(room.id)}
                 />
               ))
             )}
@@ -1971,6 +2039,11 @@ function RoomsSidebar({
                   }
                   unread={
                     getUnreadCount(friend.directRoomId) || friend.unreadCount
+                  }
+                  onMouseEnter={
+                    friend.directRoomId
+                      ? () => prefetchRoom(friend.directRoomId!)
+                      : undefined
                   }
                   action={
                     <DropdownMenu>

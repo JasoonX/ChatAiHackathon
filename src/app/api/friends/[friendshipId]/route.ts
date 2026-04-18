@@ -2,6 +2,7 @@ import { or, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { db } from "@/db";
+import { isValidUUID } from "@/lib/validate";
 import { friendships } from "@/db/schema/friends";
 import { getCurrentUser } from "@/server/auth";
 
@@ -14,6 +15,9 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
   }
 
   const { friendshipId } = await params;
+  if (!isValidUUID(friendshipId)) {
+    return NextResponse.json({ error: "Invalid friendship ID" }, { status: 400 });
+  }
 
   const [friendship] = await db
     .select()

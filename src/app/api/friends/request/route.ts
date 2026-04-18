@@ -11,6 +11,7 @@ import { getFriendPairKey, getFriendshipBetween, getUserBansBetween } from "@/se
 
 const sendFriendRequestSchema = z.object({
   username: z.string().trim().min(1, "Username is required"),
+  message: z.string().trim().max(280).optional(),
 });
 
 export async function POST(request: Request) {
@@ -83,6 +84,7 @@ export async function POST(request: Request) {
       requesterUserId: user.id,
       addresseeUserId: targetUser.id,
       pairKey,
+      message: parsed.data.message || null,
     })
     .returning({
       id: friendRequests.id,
@@ -100,6 +102,7 @@ export async function POST(request: Request) {
             requestId: friendRequest.id,
             requesterUserId: user.id,
             requesterUsername: user.username ?? user.email,
+            message: parsed.data.message || null,
             createdAt: friendRequest.createdAt.toISOString(),
           });
         }),

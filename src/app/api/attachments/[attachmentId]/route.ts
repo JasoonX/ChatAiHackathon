@@ -6,6 +6,7 @@ import { Readable } from "node:stream";
 import { and, eq } from "drizzle-orm";
 
 import { db } from "@/db";
+import { isValidUUID } from "@/lib/validate";
 import { attachments } from "@/db/schema/messages";
 import { roomMembers } from "@/db/schema/rooms";
 import { canUserDownloadAttachment } from "@/lib/permissions";
@@ -23,6 +24,9 @@ export async function GET(
   }
 
   const { attachmentId } = await params;
+  if (!isValidUUID(attachmentId)) {
+    return Response.json({ error: "Invalid attachment ID" }, { status: 400 });
+  }
 
   // Fetch attachment
   const [attachment] = await db

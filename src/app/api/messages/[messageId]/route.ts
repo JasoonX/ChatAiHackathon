@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
 import { db } from "@/db";
+import { isValidUUID } from "@/lib/validate";
 import { messages } from "@/db/schema/messages";
 import { roomMembers, rooms } from "@/db/schema/rooms";
 import { users } from "@/db/schema/users";
@@ -23,6 +24,9 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
   }
 
   const { messageId } = await params;
+  if (!isValidUUID(messageId)) {
+    return NextResponse.json({ error: "Invalid message ID" }, { status: 400 });
+  }
 
   let body: unknown;
   try {
@@ -135,6 +139,9 @@ export async function DELETE(_req: NextRequest, { params }: RouteContext) {
   }
 
   const { messageId } = await params;
+  if (!isValidUUID(messageId)) {
+    return NextResponse.json({ error: "Invalid message ID" }, { status: 400 });
+  }
 
   // Fetch message + room info for permission check
   const [msg] = await db

@@ -632,6 +632,7 @@ export function RoomManagementModal({
                 </div>
                 <div className="flex items-center gap-2 pt-2">
                   <Button
+                    variant="secondary"
                     disabled={actionMutation.isPending || !data.room.canDeleteRoom}
                     onClick={() =>
                       actionMutation.mutate({

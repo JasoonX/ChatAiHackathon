@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { db } from "@/db";
+import { isValidUUID } from "@/lib/validate";
 import { friendRequests, friendships, userBans } from "@/db/schema/friends";
 import { users } from "@/db/schema/users";
 import { getIO } from "@/lib/socket-server";
@@ -17,6 +18,9 @@ export async function POST(_request: Request, { params }: RouteContext) {
   }
 
   const { userId: targetUserId } = await params;
+  if (!isValidUUID(targetUserId)) {
+    return NextResponse.json({ error: "Invalid user ID" }, { status: 400 });
+  }
 
   if (targetUserId === user.id) {
     return NextResponse.json({ error: "You cannot ban yourself" }, { status: 400 });
@@ -91,6 +95,9 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
   }
 
   const { userId: targetUserId } = await params;
+  if (!isValidUUID(targetUserId)) {
+    return NextResponse.json({ error: "Invalid user ID" }, { status: 400 });
+  }
 
   const deleted = await db
     .delete(userBans)

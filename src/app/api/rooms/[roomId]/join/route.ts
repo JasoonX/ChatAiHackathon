@@ -3,6 +3,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { roomBans, roomMembers, rooms } from "@/db/schema/rooms";
 import { canUserJoinRoom } from "@/lib/permissions";
+import { isValidUUID } from "@/lib/validate";
 import { getIO } from "@/lib/socket-server";
 import { getCurrentUser } from "@/server/auth";
 
@@ -16,6 +17,9 @@ export async function POST(
   }
 
   const { roomId } = await params;
+  if (!isValidUUID(roomId)) {
+    return Response.json({ error: "Invalid room ID" }, { status: 400 });
+  }
 
   const [room] = await db
     .select()

@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
 import { db } from "@/db";
+import { isValidUUID } from "@/lib/validate";
 import { attachments, messages } from "@/db/schema/messages";
 import { roomMembers } from "@/db/schema/rooms";
 import { users } from "@/db/schema/users";
@@ -18,6 +19,9 @@ export async function GET(
   }
 
   const { roomId } = await params;
+  if (!isValidUUID(roomId)) {
+    return NextResponse.json({ error: "Invalid room ID" }, { status: 400 });
+  }
 
   const searchParams = req.nextUrl.searchParams;
   const cursor = searchParams.get("cursor") ?? undefined;

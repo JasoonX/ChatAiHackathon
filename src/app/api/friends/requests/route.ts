@@ -19,6 +19,7 @@ export async function GET() {
       requesterUsername: users.username,
       requesterName: users.name,
       requesterImage: users.image,
+      message: friendRequests.message,
       createdAt: friendRequests.createdAt,
     })
     .from(friendRequests)
@@ -38,6 +39,7 @@ export async function GET() {
       requesterUsername: row.requesterUsername,
       requesterName: row.requesterName,
       requesterImage: row.requesterImage,
+      message: row.message,
       createdAt: row.createdAt.toISOString(),
     })),
   });
