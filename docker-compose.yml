@@ -56,6 +56,7 @@ services:
       chat-app:
         aliases:
           - a.chat.local
+          - conference.a.chat.local
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/5222'"]
       interval: 5s
@@ -81,6 +82,7 @@ services:
       chat-app:
         aliases:
           - b.chat.local
+          - conference.b.chat.local
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/5222'"]
       interval: 5s
