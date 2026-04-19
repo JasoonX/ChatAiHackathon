@@ -55,6 +55,9 @@ The repo contains tests for:
   [`src/app/api/users/me/route.int.test.ts`](../src/app/api/users/me/route.int.test.ts) and
   [`src/db/schema/users.int.test.ts`](../src/db/schema/users.int.test.ts)
 
+Playwright is present in the toolchain, but there are currently **no
+implemented E2E spec files** under `tests/e2e`.
+
 ### Repo-Backed Delivery Timeline
 
 From the commit history, the broad sequence is supported:

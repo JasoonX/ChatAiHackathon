@@ -151,6 +151,12 @@ pnpm test:int
 pnpm test:e2e
 ```
 
+Current state:
+- `pnpm test`: unit tests
+- `pnpm test:int`: integration tests
+- `pnpm test:e2e`: Playwright is configured, but no end-to-end specs have been
+  implemented yet
+
 ## XMPP Testing
 
 ```bash
