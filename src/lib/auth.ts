@@ -39,6 +39,9 @@ export const auth = betterAuth({
     modelName: "verifications",
   },
   plugins: [username()],
+  rateLimit: {
+    enabled: process.env.DISABLE_RATE_LIMIT !== "true",
+  },
   advanced: {
     database: {
       generateId: "uuid",

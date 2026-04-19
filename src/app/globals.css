@@ -70,7 +70,13 @@
     @apply border-border;
   }
 
+  html,
   body {
+    overscroll-behavior: none;
     @apply bg-background text-foreground antialiased;
+  }
+
+  [data-radix-scroll-area-viewport] {
+    overscroll-behavior: none;
   }
 }

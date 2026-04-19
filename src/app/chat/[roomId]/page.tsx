@@ -765,6 +765,7 @@ export default function RoomPage() {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   const [showNewMsgPill, setShowNewMsgPill] = useState(false);
+  const [isAtBottom, setIsAtBottom] = useState(true);
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const topSentinelRef = useRef<HTMLDivElement>(null);
@@ -845,6 +846,7 @@ export default function RoomPage() {
     setEditingId(null);
     setReplyTo(null);
     setShowNewMsgPill(false);
+    setIsAtBottom(true);
     initialLoadedRef.current = false;
     pendingScrollRef.current = false;
     isAtBottomRef.current = true;
@@ -1044,6 +1046,7 @@ export default function RoomPage() {
       (entries) => {
         const atBottom = entries[0].isIntersecting;
         isAtBottomRef.current = atBottom;
+        setIsAtBottom(atBottom);
         if (atBottom) {
           setShowNewMsgPill(false);
         }
@@ -1111,14 +1114,12 @@ export default function RoomPage() {
             }
             return [...prev, msg];
           });
-          if (isAtBottomRef.current) {
-            requestAnimationFrame(() => {
-              if (viewportRef.current) {
-                viewportRef.current.scrollTop =
-                  viewportRef.current.scrollHeight;
-              }
-            });
-          }
+          // Always scroll to bottom after sending your own message
+          requestAnimationFrame(() => {
+            if (viewportRef.current) {
+              viewportRef.current.scrollTop = viewportRef.current.scrollHeight;
+            }
+          });
         }
       },
     );
@@ -1152,9 +1153,16 @@ export default function RoomPage() {
       }
 
       // The upload endpoint broadcasts via socket, so the message will
-      // appear via the message:new listener. Just clear the input.
+      // appear via the message:new listener. Clear input and ensure we're
+      // at the bottom so the arriving message triggers auto-scroll.
       setInput("");
       setPendingFiles([]);
+      isAtBottomRef.current = true;
+      requestAnimationFrame(() => {
+        if (viewportRef.current) {
+          viewportRef.current.scrollTop = viewportRef.current.scrollHeight;
+        }
+      });
     } catch {
       toast.error("Upload failed");
     } finally {
@@ -1399,10 +1407,11 @@ export default function RoomPage() {
         )}
       </div>
 
-      {/* Messages viewport */}
+      {/* Messages viewport + floating overlays */}
+      <div className="relative flex-1 min-h-0">
       <div
         ref={viewportRef}
-        className="relative flex-1 overflow-y-auto"
+        className="h-full overflow-y-auto overscroll-none"
       >
         <div className="px-4 py-4">
           {/* Top sentinel for infinite scroll */}
@@ -1478,6 +1487,8 @@ export default function RoomPage() {
           <div ref={bottomSentinelRef} className="h-px" />
         </div>
 
+      </div>
+
         {/* "New messages" pill */}
         {showNewMsgPill && (
           <button
@@ -1487,6 +1498,18 @@ export default function RoomPage() {
           >
             New messages
             <ArrowDown className="h-3 w-3" />
+          </button>
+        )}
+
+        {/* Scroll-to-bottom button */}
+        {!isAtBottom && !showNewMsgPill && (
+          <button
+            type="button"
+            onClick={scrollToBottom}
+            className="absolute bottom-4 right-4 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-secondary border border-border text-muted-foreground shadow-md hover:text-foreground hover:bg-muted transition-colors"
+            title="Scroll to bottom"
+          >
+            <ArrowDown className="h-4 w-4" />
           </button>
         )}
       </div>

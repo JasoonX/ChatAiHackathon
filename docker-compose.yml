@@ -50,6 +50,7 @@ services:
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-K9m2Qv8rT1xY6pL4sN7dF3hJ0wZ5cB8uM2qR6tV9yP4nX1kL7aS3dH8jF5pQ2rT6}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
       PORT: ${PORT:-3000}
+      DISABLE_RATE_LIMIT: ${DISABLE_RATE_LIMIT:-false}
     networks:
       - chat-app
     ports:

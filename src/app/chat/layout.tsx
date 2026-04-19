@@ -191,21 +191,19 @@ function SidebarSection({
   defaultOpen = true,
   action,
   children,
-  maxBodyHeightClassName,
   footer,
 }: {
   title: string;
   defaultOpen?: boolean;
   action?: React.ReactNode;
   children: React.ReactNode;
-  maxBodyHeightClassName?: string;
   footer?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
 
   return (
-    <div>
-      <div className="flex items-center gap-1 pl-3 pr-2 py-1.5">
+    <div className={open ? "flex flex-col flex-1 min-h-0 max-h-fit" : ""}>
+      <div className="flex shrink-0 items-center gap-1 pl-3 pr-2 py-1.5">
         <button
           type="button"
           onClick={() => setOpen(!open)}
@@ -220,19 +218,12 @@ function SidebarSection({
         </button>
         {action}
       </div>
-      {open &&
-        (maxBodyHeightClassName ? (
-          <div
-            className={`${maxBodyHeightClassName} overflow-y-auto overscroll-contain px-1`}
-          >
-            <div className="space-y-0.5">
-              {children}
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-0.5 px-1">{children}</div>
-        ))}
-      {open && footer ? <div className="px-1 pt-1">{footer}</div> : null}
+      {open && (
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-1">
+          <div className="space-y-0.5">{children}</div>
+        </div>
+      )}
+      {open && footer ? <div className="shrink-0 px-1 pt-1">{footer}</div> : null}
     </div>
   );
 }
@@ -2387,14 +2378,12 @@ function RoomsSidebar({
 
       <Separator />
 
-      <ScrollArea className="flex-1">
-        <div className="py-2 space-y-3">
+      <div className="flex flex-1 flex-col min-h-0 py-2 gap-1">
           <SidebarSection
             title="Public Rooms"
             action={
               <CreateRoomDialog onSuccess={invalidateRooms} trigger="icon" />
             }
-            maxBodyHeightClassName="max-h-[42vh] min-h-0"
             footer={<BrowseRoomsDialog onJoined={invalidateRooms} />}
           >
             {isLoadingRooms ? (
@@ -2434,7 +2423,6 @@ function RoomsSidebar({
                 defaultType="private"
               />
             }
-            maxBodyHeightClassName="max-h-[24vh] min-h-0"
           >
             {isLoadingRooms ? (
               <SidebarSkeletonRows count={2} />
@@ -2466,8 +2454,6 @@ function RoomsSidebar({
             )}
           </SidebarSection>
 
-          <Separator />
-
           <SidebarSection
             title="Contacts"
             action={
@@ -2480,7 +2466,6 @@ function RoomsSidebar({
                 }}
               />
             }
-            maxBodyHeightClassName="max-h-[24vh] min-h-0"
           >
             {isLoadingFriends ? (
               <SidebarSkeletonRows count={4} />
@@ -2549,8 +2534,7 @@ function RoomsSidebar({
               ))
             )}
           </SidebarSection>
-        </div>
-      </ScrollArea>
+      </div>
 
       <Separator />
       <div className="py-2 px-1 space-y-0.5">

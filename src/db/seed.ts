@@ -661,28 +661,174 @@ async function main() {
     status: "pending",
   });
 
+  // ── 11. 50 contact users ────────────────────────────────────────────────
+  console.log("Creating 50 contact users…");
+
+  // Hash once and reuse — bcrypt is intentionally slow, so avoid 50 calls.
+  const sharedHash = await hashPassword("password123");
+
+  const contactNames = Array.from(
+    { length: 50 },
+    (_, i) => `contact${String(i + 1).padStart(2, "0")}`,
+  );
+
+  const contactUserRows = contactNames.map((name) => ({
+    id: randomUUID(),
+    name,
+    email: `${name}@test.com`,
+    emailVerified: true,
+    username: name,
+    displayUsername: name,
+  }));
+
+  await db.insert(users).values(contactUserRows);
+  await db.insert(accounts).values(
+    contactUserRows.map((u) => ({
+      userId: u.id,
+      accountId: u.id,
+      providerId: "credential",
+      password: sharedHash,
+    })),
+  );
+
+  const contactUsers: SeedUser[] = contactUserRows.map((u) => ({
+    id: u.id,
+    username: u.name,
+  }));
+
+  console.log(`  ${contactUsers.length} contact users created`);
+
+  // ── 12. 50 alice ↔ contactXX friendships ───────────────────────────────
+  console.log("Creating 50 friendships for alice…");
+
+  const friendRequestRows = contactUsers.map((contact) => ({
+    requesterUserId: contact.id,
+    addresseeUserId: alice.id,
+    pairKey: pairKey(contact.id, alice.id),
+    status: "accepted" as const,
+    respondedAt: ago(Math.floor(Math.random() * 25) + 1),
+  }));
+
+  const insertedRequests = await db
+    .insert(friendRequests)
+    .values(friendRequestRows)
+    .returning({ id: friendRequests.id, pairKey: friendRequests.pairKey });
+
+  await db.insert(friendships).values(
+    insertedRequests.map((req, i) => {
+      const contact = contactUsers[i];
+      const [userOneId, userTwoId] =
+        contact.id < alice.id
+          ? [contact.id, alice.id]
+          : [alice.id, contact.id];
+      return {
+        userOneId,
+        userTwoId,
+        pairKey: req.pairKey,
+        createdFromRequestId: req.id,
+      };
+    }),
+  );
+
+  console.log(`  50 friendships created`);
+
+  // ── 12b. DM rooms for all 50 contacts ─────────────────────────────────
+  console.log("Creating DM rooms for 50 contacts…");
+
+  const dmRoomRows = contactUsers.map((contact) => ({
+    type: "direct" as const,
+    name: dmKey(alice.id, contact.id),
+    description: null,
+    ownerId: null,
+    directKey: dmKey(alice.id, contact.id),
+  }));
+
+  const insertedDmRooms = await db
+    .insert(rooms)
+    .values(dmRoomRows)
+    .returning({ id: rooms.id });
+
+  const dmMemberRows = insertedDmRooms.flatMap((room, i) => [
+    { roomId: room.id, userId: alice.id, role: "member" as const },
+    { roomId: room.id, userId: contactUsers[i].id, role: "member" as const },
+  ]);
+
+  await db.insert(roomMembers).values(dmMemberRows);
+
+  console.log(`  ${insertedDmRooms.length} DM rooms created`);
+
+  // ── 13. 16 extra rooms for alice (total ≈ 20) ──────────────────────────
+  console.log("Creating extra rooms for alice…");
+
+  const extraPublicRooms = [
+    { name: "announcements",  description: "Team-wide announcements and updates" },
+    { name: "design",         description: "UI/UX discussions, mockups, and feedback" },
+    { name: "backend",        description: "Server-side architecture and APIs" },
+    { name: "frontend",       description: "React, Next.js, and CSS talk" },
+    { name: "devops",         description: "Docker, CI/CD, and deployment" },
+    { name: "product",        description: "Product roadmap and feature discussions" },
+    { name: "testing",        description: "QA, test strategy, and automation" },
+    { name: "security",       description: "Vulnerabilities, audits, and patches" },
+  ];
+
+  const extraPrivateRooms = [
+    { name: "leads-only",     description: "Private channel for team leads" },
+    { name: "sprint-planning",description: "Sprint planning and retrospectives" },
+    { name: "incident-mgmt",  description: "On-call and incident response" },
+    { name: "perf-reviews",   description: "Performance review discussions" },
+    { name: "hiring",         description: "Candidate pipeline and interviews" },
+    { name: "budget",         description: "Cost tracking and budget approvals" },
+    { name: "roadmap-q3",     description: "Q3 roadmap planning" },
+    { name: "demo-prep",      description: "Hackathon demo rehearsal" },
+  ];
+
+  const extraRoomRows = [
+    ...extraPublicRooms.map((r) => ({ ...r, type: "public" as const, ownerId: alice.id })),
+    ...extraPrivateRooms.map((r) => ({ ...r, type: "private" as const, ownerId: alice.id })),
+  ];
+
+  const insertedExtraRooms = await db
+    .insert(rooms)
+    .values(extraRoomRows)
+    .returning({ id: rooms.id });
+
+  // Alice is admin of all extra rooms; add a couple of other members for realism.
+  const extraMemberRows = insertedExtraRooms.flatMap((room, i) => {
+    const members: { roomId: string; userId: string; role: "admin" | "member" }[] = [
+      { roomId: room.id, userId: alice.id, role: "admin" },
+    ];
+    // Rotate bob/carol/dave into a few rooms for variety.
+    if (i % 3 === 0) members.push({ roomId: room.id, userId: bob.id,   role: "member" });
+    if (i % 4 === 0) members.push({ roomId: room.id, userId: carol.id, role: "member" });
+    if (i % 5 === 0) members.push({ roomId: room.id, userId: dave.id,  role: "member" });
+    return members;
+  });
+
+  await db.insert(roomMembers).values(extraMemberRows);
+
+  console.log(`  ${insertedExtraRooms.length} extra rooms created`);
+
   // ── Summary ─────────────────────────────────────────────────────────────
   console.log(`
 ✅  Seed complete!
 
   Users:    alice / bob / carol / dave / erin / frank / grace / heidi / ivan / judy
+            + 50 contact users (contact01–contact50, password: password123)
   Rooms:    #general (public, ${generalIds.length + 2} messages + 2 attachments)
             #engineering (private, ${engIds.length} messages)
             #random (public, no messages)
             #stress-test (public, ${stressRows.length} messages across 10 users / 30 days)
+            + ${insertedExtraRooms.length} extra public/private rooms (alice owner)
   Friends:  alice ↔ bob  (with 10 DM messages)
+            alice ↔ contact01–contact50 (50 contacts)
   Pending:  carol → alice friend request
 
   Login:    alice@test.com   / alice123
             bob@test.com     / bob123
             carol@test.com   / carol123
             dave@test.com    / dave123
-            erin@test.com    / erin123
-            frank@test.com   / frank123
-            grace@test.com   / grace123
-            heidi@test.com   / heidi123
-            ivan@test.com    / ivan123
-            judy@test.com    / judy123
+            erin@test.com    / erin123  …  judy@test.com / judy123
+            contact01@test.com … contact50@test.com  /  password123
 `);
 }
 
