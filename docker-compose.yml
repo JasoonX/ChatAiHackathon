@@ -39,14 +39,16 @@ services:
   prosody-a:
     image: prosodyim/prosody:0.12
     hostname: a.chat.local
-    entrypoint: ["/opt/prosody-wrapper.sh"]
+    entrypoint:
+      - /bin/sh
+      - -lc
+      - chown -R prosody:prosody /var/lib/prosody /var/run/prosody 2>/dev/null || true; exec /entrypoint.sh prosody -F
     environment:
       LOCAL: chatty-bridge
       PASSWORD: chatty-bridge-secret
       DOMAIN: a.chat.local
     volumes:
       - ./prosody/prosody-a.cfg.lua:/etc/prosody/prosody.cfg.lua:ro
-      - ./prosody/wrapper-entrypoint.sh:/opt/prosody-wrapper.sh:ro
       - prosody_a_data:/var/lib/prosody
     ports:
       - "5222:5222"
@@ -66,14 +68,16 @@ services:
   prosody-b:
     image: prosodyim/prosody:0.12
     hostname: b.chat.local
-    entrypoint: ["/opt/prosody-wrapper.sh"]
+    entrypoint:
+      - /bin/sh
+      - -lc
+      - chown -R prosody:prosody /var/lib/prosody /var/run/prosody 2>/dev/null || true; exec /entrypoint.sh prosody -F
     environment:
       LOCAL: chatty-bridge
       PASSWORD: chatty-bridge-secret
       DOMAIN: b.chat.local
     volumes:
       - ./prosody/prosody-b.cfg.lua:/etc/prosody/prosody.cfg.lua:ro
-      - ./prosody/wrapper-entrypoint.sh:/opt/prosody-wrapper.sh:ro
       - prosody_b_data:/var/lib/prosody
     ports:
       - "5223:5222"
