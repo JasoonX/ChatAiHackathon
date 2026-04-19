@@ -111,6 +111,11 @@ with no Earth connection).
 
 - Design tokens live in src/app/globals.css (CSS variables) and are wired
   through tailwind.config.ts. All shadcn components inherit them.
+- Use the `gpt-taste` skill for frontend/UI work in this repo when the task
+  involves layout, styling, visual polish, interaction design, or page
+  composition. Treat it as the default frontend taste/aesthetic guidance layer,
+  but still preserve existing product patterns where the current app already
+  establishes them.
 - Read docs/design.md before building any UI component.
 - Match pixel references in design/screens/ for major screens.
 - Do NOT copy components from design/claude-design-export.html directly.
