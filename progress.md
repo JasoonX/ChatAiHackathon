@@ -11,3 +11,4 @@
   an authenticated app socket sent `Web to XMPP bridge check` to the `general` room, the bridge forwarded it as `alice: Web to XMPP bridge check`, and an XMPP client in `general@conference.a.chat.local` received it.
 - Fixed federation routing by adding Docker network aliases for `conference.a.chat.local` and `conference.b.chat.local`, then verified cross-server MUC delivery:
   `alice@a.chat.local` joined `general@conference.b.chat.local` and `bob@b.chat.local` received `Federation test from server A`.
+- Added a sidebar link to `/chat/admin/jabber` so the XMPP dashboard is reachable directly from the chat UI.
