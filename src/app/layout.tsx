@@ -22,8 +22,11 @@ const jetbrainsMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "chat-app",
-  description: "Real-time chat starter scaffold",
+  title: {
+    default: "Chatly",
+    template: "%s — Chatly",
+  },
+  description: "Real-time chat application",
 };
 
 export default function RootLayout({

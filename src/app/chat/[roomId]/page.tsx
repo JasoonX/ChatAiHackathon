@@ -813,6 +813,14 @@ export default function RoomPage() {
   const roomName =
     isDirectRoom ? directFriend?.username ?? "Direct message" : room?.name;
 
+  // Update page title to reflect current room
+  useEffect(() => {
+    if (roomName) {
+      document.title = `${isDirectRoom ? roomName : `#${roomName}`} — Chatly`;
+    }
+    return () => { document.title = "Chatly"; };
+  }, [roomName, isDirectRoom]);
+
   // Check if current user is room admin/owner (for delete permissions)
   const isRoomAdminOrOwner = currentUserId
     ? room?.ownerId === currentUserId || room?.role === "admin"
