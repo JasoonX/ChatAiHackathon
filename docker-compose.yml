@@ -36,6 +36,57 @@ services:
     command: ["sh", "-c", "pnpm db:push && pnpm db:seed"]
     restart: "no"
 
+  prosody-a:
+    image: prosodyim/prosody:0.12
+    hostname: a.chat.local
+    entrypoint: ["/opt/prosody-wrapper.sh"]
+    environment:
+      LOCAL: chatty-bridge
+      PASSWORD: chatty-bridge-secret
+      DOMAIN: a.chat.local
+    volumes:
+      - ./prosody/prosody-a.cfg.lua:/etc/prosody/prosody.cfg.lua:ro
+      - ./prosody/wrapper-entrypoint.sh:/opt/prosody-wrapper.sh:ro
+      - prosody_a_data:/var/lib/prosody
+    ports:
+      - "5222:5222"
+      - "5269:5269"
+      - "5347:5347"
+    networks:
+      chat-app:
+        aliases:
+          - a.chat.local
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/5222'"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  prosody-b:
+    image: prosodyim/prosody:0.12
+    hostname: b.chat.local
+    entrypoint: ["/opt/prosody-wrapper.sh"]
+    environment:
+      LOCAL: chatty-bridge
+      PASSWORD: chatty-bridge-secret
+      DOMAIN: b.chat.local
+    volumes:
+      - ./prosody/prosody-b.cfg.lua:/etc/prosody/prosody.cfg.lua:ro
+      - ./prosody/wrapper-entrypoint.sh:/opt/prosody-wrapper.sh:ro
+      - prosody_b_data:/var/lib/prosody
+    ports:
+      - "5223:5222"
+      - "5270:5269"
+    networks:
+      chat-app:
+        aliases:
+          - b.chat.local
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/5222'"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   app:
     build:
       context: .
@@ -45,12 +96,18 @@ services:
         condition: service_healthy
       seed:
         condition: service_completed_successfully
+      prosody-a:
+        condition: service_healthy
     environment:
       DATABASE_URL: postgres://postgres:postgres@db:5432/chat_app
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-K9m2Qv8rT1xY6pL4sN7dF3hJ0wZ5cB8uM2qR6tV9yP4nX1kL7aS3dH8jF5pQ2rT6}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
       PORT: ${PORT:-3000}
       DISABLE_RATE_LIMIT: ${DISABLE_RATE_LIMIT:-false}
+      PROSODY_A_COMPONENT_HOST: prosody-a
+      PROSODY_A_COMPONENT_PORT: "5347"
+      PROSODY_A_COMPONENT_SECRET: chatty-bridge-secret
+      PROSODY_A_DOMAIN: a.chat.local
     networks:
       - chat-app
     ports:
@@ -63,3 +120,5 @@ networks:
 
 volumes:
   pg_data:
+  prosody_a_data:
+  prosody_b_data:

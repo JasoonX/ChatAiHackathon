@@ -21,6 +21,7 @@ import {
   startPresenceSweep,
   stopPresenceSweep,
 } from "./src/server/presence";
+import { startXmppBridge, stopXmppBridge, forwardToXmpp } from "./src/server/xmpp-bridge";
 import { and, eq } from "drizzle-orm";
 
 const dev = process.env.NODE_ENV !== "production";
@@ -52,6 +53,11 @@ async function bootstrap() {
 
   setIO(io);
   startPresenceSweep(io);
+
+  // Start XMPP bridge (non-blocking — app works even if Prosody is down)
+  startXmppBridge().catch((err) => {
+    console.error("[XMPP Bridge] Startup failed (non-fatal):", err);
+  });
 
   io.on("connection", (socket) => {
     const { userId, username } = socket.data;
@@ -196,6 +202,7 @@ async function bootstrap() {
           await socket.join(roomId);
           console.log(`[message:send] userId=${userId} roomId=${roomId} msgId=${message.id}`);
           io.to(roomId).emit("message:new", payload);
+          if (room.name) forwardToXmpp(room.name, sender.username, content).catch(() => {});
           callback({ message: payload });
           return;
         }
@@ -224,6 +231,7 @@ async function bootstrap() {
         await socket.join(roomId);
         console.log(`[message:send] userId=${userId} roomId=${roomId} msgId=${message.id}`);
         io.to(roomId).emit("message:new", payload);
+        if (room.name) forwardToXmpp(room.name, sender.username, content).catch(() => {});
         callback({ message: payload });
       },
     );
@@ -267,6 +275,7 @@ async function bootstrap() {
     shuttingDown = true;
     console.log(`Received ${signal}. Shutting down gracefully...`);
     stopPresenceSweep();
+    await stopXmppBridge();
 
     await new Promise<void>((resolve, reject) => {
       io.close((error) => {

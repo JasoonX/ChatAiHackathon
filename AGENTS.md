@@ -186,7 +186,6 @@ test is being too strict", that is the signal to stop and ask.
 ## Hard rules (no exceptions)
 
 - Never modify server.ts to remove the custom server — Socket.io needs it
-- Never touch Jabber / XMPP / federation — skip section 6 entirely
 - No external runtime dependencies. No CDN fonts. No external APIs.
 - Database-backed sessions only (no JWT)
 - No force-pushing to main
