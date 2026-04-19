@@ -1,0 +1,24 @@
+{
+  "timestamp": "2026-04-19T11:51:46.862Z",
+  "config": {
+    "botsPerServer": 50,
+    "testDurationMs": 30000,
+    "messageIntervalMs": 2000
+  },
+  "serverA": {
+    "connected": 50,
+    "total": 50,
+    "totalSent": 930,
+    "totalReceived": 44505,
+    "avgConnectTimeMs": 261,
+    "errors": 0
+  },
+  "serverB": {
+    "connected": 50,
+    "total": 50,
+    "totalSent": 930,
+    "totalReceived": 44503,
+    "avgConnectTimeMs": 260,
+    "errors": 0
+  }
+}
