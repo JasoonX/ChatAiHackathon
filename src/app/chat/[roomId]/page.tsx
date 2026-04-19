@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { useParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -40,7 +46,12 @@ import { useUnread } from "@/components/unread-provider";
 import { useContextPanel } from "@/components/context-panel-context";
 import { useSocket } from "@/hooks/use-socket";
 import { authClient } from "@/lib/auth-client";
-import type { AttachmentPayload, MessagePayload, PresenceSnapshot, PresenceStatus } from "@/lib/socket";
+import type {
+  AttachmentPayload,
+  MessagePayload,
+  PresenceSnapshot,
+  PresenceStatus,
+} from "@/lib/socket";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -69,7 +80,8 @@ type ImageLightboxProps =
     };
 
 function ImageLightbox(props: ImageLightboxProps) {
-  const images = "images" in props ? props.images : [{ src: props.src, alt: props.alt }];
+  const images =
+    "images" in props ? props.images : [{ src: props.src, alt: props.alt }];
   const initialIndex = "initialIndex" in props ? props.initialIndex : 0;
   const onClose = props.onClose;
   const [index, setIndex] = useState(initialIndex);
@@ -78,7 +90,10 @@ function ImageLightbox(props: ImageLightboxProps) {
   const hasNext = index < total - 1;
 
   const prev = useCallback(() => setIndex((i) => Math.max(0, i - 1)), []);
-  const next = useCallback(() => setIndex((i) => Math.min(total - 1, i + 1)), [total]);
+  const next = useCallback(
+    () => setIndex((i) => Math.min(total - 1, i + 1)),
+    [total],
+  );
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -118,7 +133,10 @@ function ImageLightbox(props: ImageLightboxProps) {
       {hasPrev && (
         <button
           type="button"
-          onClick={(e) => { e.stopPropagation(); prev(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            prev();
+          }}
           className="absolute left-4 flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
           aria-label="Previous image"
         >
@@ -140,7 +158,10 @@ function ImageLightbox(props: ImageLightboxProps) {
       {hasNext && (
         <button
           type="button"
-          onClick={(e) => { e.stopPropagation(); next(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            next();
+          }}
           className="absolute right-4 flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
           aria-label="Next image"
         >
@@ -181,7 +202,11 @@ function FileAttachmentRow({ attachment }: { attachment: AttachmentPayload }) {
   );
 }
 
-function AttachmentGroup({ attachments }: { attachments: AttachmentPayload[] }) {
+function AttachmentGroup({
+  attachments,
+}: {
+  attachments: AttachmentPayload[];
+}) {
   const images = attachments.filter((a) => a.mimeType.startsWith("image/"));
   const files = attachments.filter((a) => !a.mimeType.startsWith("image/"));
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
@@ -230,7 +255,11 @@ function AttachmentGroup({ attachments }: { attachments: AttachmentPayload[] }) 
                 onClick={() => setLightboxIndex(isOverflowCell ? 3 : i)}
                 className="relative cursor-zoom-in overflow-hidden"
                 style={{ width: 128, height: 128 }}
-                title={isOverflowCell ? `View all ${images.length} images` : img.originalFilename}
+                title={
+                  isOverflowCell
+                    ? `View all ${images.length} images`
+                    : img.originalFilename
+                }
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -395,11 +424,25 @@ const PRESENCE_COLOR: Record<string, string> = {
   offline: "bg-muted-foreground/40",
 };
 
-function UserAvatar({ name, presence }: { name: string; presence?: PresenceStatus }) {
+function UserAvatar({
+  name,
+  presence,
+}: {
+  name: string;
+  presence?: PresenceStatus;
+}) {
   return (
-    <div className="relative shrink-0" style={{ width: AVATAR_SIZE, height: AVATAR_SIZE }}>
+    <div
+      className="relative shrink-0"
+      style={{ width: AVATAR_SIZE, height: AVATAR_SIZE }}
+    >
       <div className="rounded-full overflow-hidden w-full h-full">
-        <Avatar size={AVATAR_SIZE} name={name} variant="beam" colors={AVATAR_COLORS} />
+        <Avatar
+          size={AVATAR_SIZE}
+          name={name}
+          variant="beam"
+          colors={AVATAR_COLORS}
+        />
       </div>
       {presence && (
         <span
@@ -449,7 +492,11 @@ function MessageBubble({
     <div className="absolute right-0 top-0 opacity-0 group-hover:opacity-100 transition-opacity">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+          >
             <MoreHorizontal className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
@@ -465,7 +512,10 @@ function MessageBubble({
             </DropdownMenuItem>
           )}
           {canDelete && (
-            <DropdownMenuItem onClick={() => onDelete(message)} className="text-destructive focus:text-destructive">
+            <DropdownMenuItem
+              onClick={() => onDelete(message)}
+              className="text-destructive focus:text-destructive"
+            >
               <Trash2 className="mr-2 h-4 w-4" /> Delete
             </DropdownMenuItem>
           )}
@@ -477,10 +527,14 @@ function MessageBubble({
   if (isDeleted) {
     return (
       <div className="flex gap-2.5 items-start">
-        {grouped
-          ? <div style={{ width: AVATAR_SIZE }} className="shrink-0" />
-          : <UserAvatar name={message.sender.username} presence={senderPresence} />
-        }
+        {grouped ? (
+          <div style={{ width: AVATAR_SIZE }} className="shrink-0" />
+        ) : (
+          <UserAvatar
+            name={message.sender.username}
+            presence={senderPresence}
+          />
+        )}
         <div className="flex-1 min-w-0">
           {!grouped && (
             <div className="flex items-baseline gap-2 mb-0.5">
@@ -506,7 +560,9 @@ function MessageBubble({
           {message.content && (
             <p className="text-[13px] leading-relaxed text-foreground/90 whitespace-pre-wrap break-words">
               {message.content}
-              <span className="ml-2 text-[10px] text-muted-foreground align-baseline">{time}</span>
+              <span className="ml-2 text-[10px] text-muted-foreground align-baseline">
+                {time}
+              </span>
             </p>
           )}
           {message.attachments && message.attachments.length > 0 && (
@@ -526,7 +582,9 @@ function MessageBubble({
           <span className="text-[13px] font-semibold text-foreground">
             {message.sender.name || message.sender.username}
             {isAuthor && (
-              <span className="ml-1 text-[11px] font-normal text-muted-foreground">(you)</span>
+              <span className="ml-1 text-[11px] font-normal text-muted-foreground">
+                (you)
+              </span>
             )}
           </span>
           <span className="text-[11px] text-muted-foreground">{time}</span>
@@ -686,10 +744,14 @@ function EditableMessage({
 
     return (
       <div className="flex gap-2.5 items-start">
-        {grouped
-          ? <div style={{ width: AVATAR_SIZE }} className="shrink-0" />
-          : <UserAvatar name={message.sender.username} presence={senderPresence} />
-        }
+        {grouped ? (
+          <div style={{ width: AVATAR_SIZE }} className="shrink-0" />
+        ) : (
+          <UserAvatar
+            name={message.sender.username}
+            presence={senderPresence}
+          />
+        )}
         <div className="flex-1 min-w-0">
           {!grouped && (
             <div className="flex items-baseline gap-2 mb-0.5">
@@ -749,7 +811,11 @@ export default function RoomPage() {
   const { data: session } = authClient.useSession();
   const currentUserId = session?.user?.id;
   const { clearUnread } = useUnread();
-  const { open: panelOpen, toggle: togglePanel, available: panelAvailable } = useContextPanel();
+  const {
+    open: panelOpen,
+    toggle: togglePanel,
+    available: panelAvailable,
+  } = useContextPanel();
 
   const [presence, setPresence] = useState<PresenceSnapshot>({});
   const [msgs, setMsgs] = useState<MessagePayload[]>([]);
@@ -760,7 +826,9 @@ export default function RoomPage() {
   const [sending, setSending] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<MessagePayload | null>(null);
-  const [pendingFiles, setPendingFiles] = useState<{ id: string; file: File }[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<
+    { id: string; file: File }[]
+  >([]);
   const [uploading, setUploading] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
@@ -809,16 +877,20 @@ export default function RoomPage() {
   const directFriend = friends.find((friend) => friend.directRoomId === roomId);
   const isDirectRoom = room?.type === "direct";
   // While friends are still loading we don't know yet — optimistically allow messaging
-  const canMessageDirect = isLoadingFriends || !isDirectRoom || Boolean(directFriend);
-  const roomName =
-    isDirectRoom ? directFriend?.username ?? "Direct message" : room?.name;
+  const canMessageDirect =
+    isLoadingFriends || !isDirectRoom || Boolean(directFriend);
+  const roomName = isDirectRoom
+    ? (directFriend?.username ?? "Direct message")
+    : room?.name;
 
   // Update page title to reflect current room
   useEffect(() => {
     if (roomName) {
-      document.title = `${isDirectRoom ? roomName : `#${roomName}`} — Chatly`;
+      document.title = `${isDirectRoom ? roomName : `#${roomName}`} — Chatty`;
     }
-    return () => { document.title = "Chatly"; };
+    return () => {
+      document.title = "Chatty";
+    };
   }, [roomName, isDirectRoom]);
 
   // Check if current user is room admin/owner (for delete permissions)
@@ -830,7 +902,11 @@ export default function RoomPage() {
   // Initial fetch
   // -------------------------------------------------------------------------
 
-  const { data: initialData, isLoading, error: messagesError } = useQuery({
+  const {
+    data: initialData,
+    isLoading,
+    error: messagesError,
+  } = useQuery({
     queryKey: ["messages", roomId],
     queryFn: async () => {
       const res = await fetch(`/api/rooms/${roomId}/messages?limit=50`);
@@ -908,8 +984,6 @@ export default function RoomPage() {
     };
   }, [clearUnread, roomId]);
 
-
-
   // -------------------------------------------------------------------------
   // Socket: real-time messages
   // -------------------------------------------------------------------------
@@ -967,15 +1041,18 @@ export default function RoomPage() {
     }) => {
       if (deletedRoomId !== roomId) return;
       setMsgs((prev) =>
-        prev.map((m) =>
-          m.id === id ? { ...m, deletedAt, content: null } : m,
-        ),
+        prev.map((m) => (m.id === id ? { ...m, deletedAt, content: null } : m)),
       );
     };
 
     const onSnapshot = (snap: PresenceSnapshot) => setPresence(snap);
-    const onPresenceUpdate = ({ userId, status }: { userId: string; status: PresenceStatus }) =>
-      setPresence((prev) => ({ ...prev, [userId]: status }));
+    const onPresenceUpdate = ({
+      userId,
+      status,
+    }: {
+      userId: string;
+      status: PresenceStatus;
+    }) => setPresence((prev) => ({ ...prev, [userId]: status }));
 
     socket.on("message:new", onMessage);
     socket.on("message:updated", onUpdated);
@@ -1190,7 +1267,10 @@ export default function RoomPage() {
   useEffect(() => {
     if (!showEmojiPicker) return;
     const handler = (e: MouseEvent) => {
-      if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target as Node)) {
+      if (
+        emojiPickerRef.current &&
+        !emojiPickerRef.current.contains(e.target as Node)
+      ) {
         setShowEmojiPicker(false);
       }
     };
@@ -1246,7 +1326,10 @@ export default function RoomPage() {
       }
       if (imageFiles.length > 0) {
         e.preventDefault();
-        setPendingFiles((prev) => [...prev, ...imageFiles.map((file) => ({ id: crypto.randomUUID(), file }))]);
+        setPendingFiles((prev) => [
+          ...prev,
+          ...imageFiles.map((file) => ({ id: crypto.randomUUID(), file })),
+        ]);
       }
     },
     [],
@@ -1256,7 +1339,10 @@ export default function RoomPage() {
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const selected = Array.from(e.target.files ?? []);
       if (selected.length > 0) {
-        setPendingFiles((prev) => [...prev, ...selected.map((file) => ({ id: crypto.randomUUID(), file }))]);
+        setPendingFiles((prev) => [
+          ...prev,
+          ...selected.map((file) => ({ id: crypto.randomUUID(), file })),
+        ]);
       }
       // Reset input so same file can be re-selected
       e.target.value = "";
@@ -1386,10 +1472,17 @@ export default function RoomPage() {
         {isDirectRoom && directFriend ? (
           <div className="relative shrink-0 h-6 w-6">
             <div className="rounded-full overflow-hidden w-full h-full">
-              <Avatar size={24} name={directFriend.username} variant="beam" colors={AVATAR_COLORS} />
+              <Avatar
+                size={24}
+                name={directFriend.username}
+                variant="beam"
+                colors={AVATAR_COLORS}
+              />
             </div>
             {presence[directFriend.userId] && (
-              <span className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full ring-2 ring-background ${PRESENCE_COLOR[presence[directFriend.userId]] ?? PRESENCE_COLOR.offline}`} />
+              <span
+                className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full ring-2 ring-background ${PRESENCE_COLOR[presence[directFriend.userId]] ?? PRESENCE_COLOR.offline}`}
+              />
             )}
           </div>
         ) : (
@@ -1417,85 +1510,89 @@ export default function RoomPage() {
 
       {/* Messages viewport + floating overlays */}
       <div className="relative flex-1 min-h-0">
-      <div
-        ref={viewportRef}
-        className="h-full overflow-y-auto overscroll-none"
-      >
-        <div className="px-4 py-4">
-          {/* Top sentinel for infinite scroll */}
-          <div ref={topSentinelRef} className="h-px" />
+        <div
+          ref={viewportRef}
+          className="h-full overflow-y-auto overscroll-none"
+        >
+          <div className="px-4 py-4">
+            {/* Top sentinel for infinite scroll */}
+            <div ref={topSentinelRef} className="h-px" />
 
-          {loadingMore && (
-            <div className="flex items-center justify-center gap-2 py-2">
-              <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-              <span className="text-[12px] text-muted-foreground">
-                Loading history...
-              </span>
-            </div>
-          )}
-
-          {isLoading && (
-            <div className="flex items-center justify-center gap-2 py-8">
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-              <span className="text-[12px] text-muted-foreground">
-                Loading...
-              </span>
-            </div>
-          )}
-
-          {!isLoading && msgs.length === 0 && (
-            <p className="py-8 text-center text-[13px] text-muted-foreground">
-              No messages yet. Say hello!
-            </p>
-          )}
-
-          {msgs.map((msg, i) => {
-            const prevMsg = i > 0 ? msgs[i - 1] : null;
-            const msgDate = new Date(msg.createdAt);
-            const prevDate = prevMsg ? new Date(prevMsg.createdAt) : null;
-
-            const showDateSep =
-              !prevDate ||
-              msgDate.getFullYear() !== prevDate.getFullYear() ||
-              msgDate.getMonth() !== prevDate.getMonth() ||
-              msgDate.getDate() !== prevDate.getDate();
-
-            const grouped =
-              !showDateSep &&
-              !!prevMsg &&
-              prevMsg.sender.id === msg.sender.id &&
-              !prevMsg.deletedAt &&
-              msgDate.getTime() - new Date(prevMsg.createdAt).getTime() < 5 * 60 * 1000;
-
-            return (
-              <div key={msg.id} data-message-id={msg.id} className={grouped ? "mt-0.5" : "mt-3"}>
-                {showDateSep && <DateSeparator date={msgDate} />}
-                <EditableMessage
-                  message={msg}
-                  currentUserId={currentUserId}
-                  isRoomAdminOrOwner={isRoomAdminOrOwner}
-                  editingId={editingId}
-                  grouped={grouped}
-                  senderPresence={presence[msg.sender.id]}
-                  onReply={handleReply}
-                  onReplyClick={scrollToMessage}
-                  onStartEdit={(m) => {
-                    setEditingId(m.id);
-                    setReplyTo(null);
-                  }}
-                  onSaveEdit={handleSaveEdit}
-                  onCancelEdit={() => setEditingId(null)}
-                  onDelete={handleDelete}
-                />
+            {loadingMore && (
+              <div className="flex items-center justify-center gap-2 py-2">
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                <span className="text-[12px] text-muted-foreground">
+                  Loading history...
+                </span>
               </div>
-            );
-          })}
+            )}
 
-          {/* Bottom sentinel for tracking "at bottom" state */}
-          <div ref={bottomSentinelRef} className="h-px" />
+            {isLoading && (
+              <div className="flex items-center justify-center gap-2 py-8">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                <span className="text-[12px] text-muted-foreground">
+                  Loading...
+                </span>
+              </div>
+            )}
+
+            {!isLoading && msgs.length === 0 && (
+              <p className="py-8 text-center text-[13px] text-muted-foreground">
+                No messages yet. Say hello!
+              </p>
+            )}
+
+            {msgs.map((msg, i) => {
+              const prevMsg = i > 0 ? msgs[i - 1] : null;
+              const msgDate = new Date(msg.createdAt);
+              const prevDate = prevMsg ? new Date(prevMsg.createdAt) : null;
+
+              const showDateSep =
+                !prevDate ||
+                msgDate.getFullYear() !== prevDate.getFullYear() ||
+                msgDate.getMonth() !== prevDate.getMonth() ||
+                msgDate.getDate() !== prevDate.getDate();
+
+              const grouped =
+                !showDateSep &&
+                !!prevMsg &&
+                prevMsg.sender.id === msg.sender.id &&
+                !prevMsg.deletedAt &&
+                msgDate.getTime() - new Date(prevMsg.createdAt).getTime() <
+                  5 * 60 * 1000;
+
+              return (
+                <div
+                  key={msg.id}
+                  data-message-id={msg.id}
+                  className={grouped ? "mt-0.5" : "mt-3"}
+                >
+                  {showDateSep && <DateSeparator date={msgDate} />}
+                  <EditableMessage
+                    message={msg}
+                    currentUserId={currentUserId}
+                    isRoomAdminOrOwner={isRoomAdminOrOwner}
+                    editingId={editingId}
+                    grouped={grouped}
+                    senderPresence={presence[msg.sender.id]}
+                    onReply={handleReply}
+                    onReplyClick={scrollToMessage}
+                    onStartEdit={(m) => {
+                      setEditingId(m.id);
+                      setReplyTo(null);
+                    }}
+                    onSaveEdit={handleSaveEdit}
+                    onCancelEdit={() => setEditingId(null)}
+                    onDelete={handleDelete}
+                  />
+                </div>
+              );
+            })}
+
+            {/* Bottom sentinel for tracking "at bottom" state */}
+            <div ref={bottomSentinelRef} className="h-px" />
+          </div>
         </div>
-
-      </div>
 
         {/* "New messages" pill */}
         {showNewMsgPill && (
@@ -1533,8 +1630,7 @@ export default function RoomPage() {
             </span>
             {replyTo.content && (
               <>
-                :{" "}
-                <span className="truncate">{replyTo.content}</span>
+                : <span className="truncate">{replyTo.content}</span>
               </>
             )}
           </div>
@@ -1585,7 +1681,9 @@ export default function RoomPage() {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder={pendingFiles.length > 0 ? "Add a comment…" : "Message..."}
+            placeholder={
+              pendingFiles.length > 0 ? "Add a comment…" : "Message..."
+            }
             className="min-h-[36px] max-h-48 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 focus-visible:border-0 overflow-y-auto py-2 px-3"
             rows={1}
             disabled={sending || uploading || !canMessageDirect}
@@ -1621,7 +1719,9 @@ export default function RoomPage() {
                       theme="dark"
                       previewPosition="none"
                       skinTonePosition="none"
-                      onEmojiSelect={(e: { native: string }) => insertEmoji(e.native)}
+                      onEmojiSelect={(e: { native: string }) =>
+                        insertEmoji(e.native)
+                      }
                     />
                   </div>
                 )}
@@ -1644,7 +1744,8 @@ export default function RoomPage() {
           </div>
         </div>
         <p className="mt-1 text-[11px] text-muted-foreground">
-          Enter to send · Shift+Enter for newline · Paste or attach multiple files
+          Enter to send · Shift+Enter for newline · Paste or attach multiple
+          files
         </p>
       </div>
     </div>

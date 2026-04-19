@@ -23,8 +23,8 @@ const jetbrainsMono = localFont({
 
 export const metadata: Metadata = {
   title: {
-    default: "Chatly",
-    template: "%s — Chatly",
+    default: "Chatty",
+    template: "%s — Chatty",
   },
   description: "Real-time chat application",
 };
