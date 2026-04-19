@@ -270,23 +270,23 @@ function RoomItem({
         )}
         <span className="truncate">{name}</span>
       </Link>
-      <div className="shrink-0 pr-1 flex items-center justify-end min-w-[20px]">
+      <div className="shrink-0 pr-1 flex items-center justify-end min-w-[28px]">
         {action ? (
-          <>
+          <div className="relative flex h-6 w-6 items-center justify-end">
             {unread > 0 && (
               <Badge
                 variant="default"
-                className="text-[10px] px-1.5 py-0 mr-[3px] group-hover/room:hidden"
+                className="pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 text-[10px] px-1.5 py-0 transition-opacity group-hover/room:opacity-0"
               >
                 {unread}
               </Badge>
             )}
             <div
-              className={`flex items-center transition-opacity ${unread > 0 ? "hidden group-hover/room:flex" : "opacity-0 group-hover/room:opacity-100 flex"}`}
+              className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover/room:opacity-100 focus-within:opacity-100"
             >
               {action}
             </div>
-          </>
+          </div>
         ) : unread > 0 ? (
           <Badge variant="default" className="text-[10px] px-1.5 py-0">
             {unread}
@@ -337,21 +337,21 @@ function ContactItem({
       </Link>
       <div className="shrink-0 pr-1 flex items-center justify-end min-w-[28px]">
         {action ? (
-          <>
+          <div className="relative flex h-6 w-6 items-center justify-end">
             {unread > 0 && (
               <Badge
                 variant="default"
-                className="text-[10px] px-1.5 py-0 mr-[3px] group-hover/contact:hidden"
+                className="pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 text-[10px] px-1.5 py-0 transition-opacity group-hover/contact:opacity-0"
               >
                 {unread}
               </Badge>
             )}
             <div
-              className={`flex items-center transition-opacity ${unread > 0 ? "hidden group-hover/contact:flex" : "opacity-0 group-hover/contact:opacity-100 flex"}`}
+              className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover/contact:opacity-100 focus-within:opacity-100"
             >
               {action}
             </div>
-          </>
+          </div>
         ) : unread > 0 ? (
           <Badge variant="default" className="text-[10px] px-1.5 py-0">
             {unread}
