@@ -20,14 +20,26 @@ export function useSocket(): { socket: TypedSocket | null; connected: boolean } 
     const onConnect = () => setConnected(true);
     const onDisconnect = () => setConnected(false);
 
+    const onConnectError = (err: Error) => {
+      if (
+        err.message === "unauthorized" &&
+        !window.location.pathname.startsWith("/login") &&
+        !window.location.pathname.startsWith("/register")
+      ) {
+        window.location.href = "/login";
+      }
+    };
+
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
+    socket.on("connect_error", onConnectError);
 
     setConnected(socket.connected);
 
     return () => {
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
+      socket.off("connect_error", onConnectError);
     };
   }, []);
 

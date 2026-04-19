@@ -76,15 +76,10 @@ export function UnreadProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const clearUnread = useCallback((roomId: string) => {
-    setUnreadMap((current) => {
-      if (!(roomId in current)) {
-        return current;
-      }
-
-      const next = { ...current };
-      delete next[roomId];
-      return next;
-    });
+    setUnreadMap((current) => ({
+      ...current,
+      [roomId]: 0,
+    }));
   }, []);
 
   const getUnreadCount = useCallback(

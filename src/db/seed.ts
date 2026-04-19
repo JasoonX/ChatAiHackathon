@@ -9,14 +9,14 @@ import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { hashPassword } from "better-auth/crypto";
 
 import { db, postgresClient } from "./index";
 import { friendRequests, friendships } from "./schema/friends";
 import { attachments, messages } from "./schema/messages";
-import { roomMembers, rooms } from "./schema/rooms";
+import { roomBans, roomInvitations, roomMembers, rooms } from "./schema/rooms";
 import { accounts, users } from "./schema/users";
 
 // ---------------------------------------------------------------------------
@@ -661,6 +661,141 @@ async function main() {
     status: "pending",
   });
 
+  // ── 10b. Unread messages for alice ──────────────────────────────────────
+  // Bob sends messages to #general and DM *after* alice's last activity,
+  // so alice sees unread badges on login.
+  console.log("Creating unread messages for alice…");
+
+  const unreadTime = ago(0, 1, 0); // 1 hour ago — after alice's last messages
+
+  await db.insert(messages).values([
+    {
+      roomId: general.id,
+      senderUserId: bob.id,
+      body: "Hey alice, one last thing — can you double-check the session revocation flow before the demo?",
+      createdAt: unreadTime,
+      updatedAt: unreadTime,
+    },
+    {
+      roomId: general.id,
+      senderUserId: carol.id,
+      body: "I just tested it, looks solid to me 👍",
+      createdAt: ago(0, 0, 55),
+      updatedAt: ago(0, 0, 55),
+    },
+    {
+      roomId: general.id,
+      senderUserId: bob.id,
+      body: "Perfect, then we're all set!",
+      createdAt: ago(0, 0, 50),
+      updatedAt: ago(0, 0, 50),
+    },
+  ]);
+
+  // Unread DM from bob
+  await db.insert(messages).values({
+    roomId: dmRoom.id,
+    senderUserId: bob.id,
+    body: "Hey, just wanted to say — really proud of what we built. Let's nail this demo! 💪",
+    createdAt: ago(0, 0, 30),
+    updatedAt: ago(0, 0, 30),
+  });
+
+  // Set alice's last_read_at in these rooms to before the unread messages
+  const aliceLastRead = ago(0, 2, 0); // 2 hours ago
+  await db
+    .update(roomMembers)
+    .set({ lastReadAt: aliceLastRead })
+    .where(
+      eq(roomMembers.userId, alice.id),
+    );
+
+  console.log("  Unread messages seeded (3 in #general, 1 in DM)");
+
+  // ── 10c. Room invitation for alice ─────────────────────────────────────
+  // Bob invites alice to a private room she hasn't joined yet.
+  console.log("Creating room invitation for alice…");
+
+  const [inviteRoom] = await db
+    .insert(rooms)
+    .values({
+      name: "launch-party",
+      description: "Celebrating our launch! 🎉",
+      type: "private",
+      ownerId: bob.id,
+    })
+    .returning({ id: rooms.id });
+
+  await db.insert(roomMembers).values({
+    roomId: inviteRoom.id,
+    userId: bob.id,
+    role: "admin",
+  });
+
+  await db.insert(roomInvitations).values({
+    roomId: inviteRoom.id,
+    inviteeUserId: alice.id,
+    inviterUserId: bob.id,
+    status: "pending",
+  });
+
+  console.log("  Pending invitation to #launch-party created");
+
+  // ── 10d. DM attachment ─────────────────────────────────────────────────
+  // Seed a file in the alice↔bob DM to show attachments work in DMs.
+  console.log("Creating DM attachment…");
+
+  const dmStorageKey = `${randomUUID()}.png`;
+  await writeFile(join(UPLOADS_DIR, dmStorageKey), TINY_PNG);
+
+  const [dmAttachMsg] = await db
+    .insert(messages)
+    .values({
+      roomId: dmRoom.id,
+      senderUserId: bob.id,
+      body: "Check out this mockup for the landing page!",
+      createdAt: ago(1, 14, 0),
+      updatedAt: ago(1, 14, 0),
+    })
+    .returning({ id: messages.id });
+
+  await db.insert(attachments).values({
+    roomId: dmRoom.id,
+    messageId: dmAttachMsg.id,
+    uploaderUserId: bob.id,
+    storageKey: dmStorageKey,
+    originalFilename: "landing-page-mockup.png",
+    mimeType: "image/png",
+    byteSize: TINY_PNG.byteLength,
+    imageWidth: 1,
+    imageHeight: 1,
+  });
+
+  console.log("  DM attachment created");
+
+  // ── 10e. Room ban in #general ──────────────────────────────────────────
+  // Ban dave from #random so the Manage Room modal's ban tab has content.
+  console.log("Creating room ban…");
+
+  // Remove dave from #random membership first (if he's a member)
+  await db
+    .delete(roomMembers)
+    .where(
+      and(
+        eq(roomMembers.roomId, random.id),
+        eq(roomMembers.userId, dave.id),
+      ),
+    );
+
+  await db.insert(roomBans).values({
+    roomId: random.id,
+    userId: dave.id,
+    bannedByUserId: bob.id,
+    reason: "Spamming memes during standup",
+  });
+
+  console.log("  Dave banned from #random");
+
   // ── 11. 50 contact users ────────────────────────────────────────────────
   console.log("Creating 50 contact users…");
 
@@ -701,12 +836,12 @@ async function main() {
   // ── 12. 50 alice ↔ contactXX friendships ───────────────────────────────
   console.log("Creating 50 friendships for alice…");
 
-  const friendRequestRows = contactUsers.map((contact) => ({
+  const friendRequestRows = contactUsers.map((contact, i) => ({
     requesterUserId: contact.id,
     addresseeUserId: alice.id,
     pairKey: pairKey(contact.id, alice.id),
     status: "accepted" as const,
-    respondedAt: ago(Math.floor(Math.random() * 25) + 1),
+    respondedAt: ago(30 + i),  // older than alice↔bob so bob sorts first
   }));
 
   const insertedRequests = await db
@@ -735,12 +870,13 @@ async function main() {
   // ── 12b. DM rooms for all 50 contacts ─────────────────────────────────
   console.log("Creating DM rooms for 50 contacts…");
 
-  const dmRoomRows = contactUsers.map((contact) => ({
+  const dmRoomRows = contactUsers.map((contact, i) => ({
     type: "direct" as const,
     name: dmKey(alice.id, contact.id),
     description: null,
     ownerId: null,
     directKey: dmKey(alice.id, contact.id),
+    createdAt: ago(30 + i),  // older than all messages so they sort below active DMs
   }));
 
   const insertedDmRooms = await db
@@ -783,8 +919,12 @@ async function main() {
   ];
 
   const extraRoomRows = [
-    ...extraPublicRooms.map((r) => ({ ...r, type: "public" as const, ownerId: alice.id })),
-    ...extraPrivateRooms.map((r) => ({ ...r, type: "private" as const, ownerId: alice.id })),
+    ...extraPublicRooms.map((r, i) => ({
+      ...r, type: "public" as const, ownerId: alice.id, createdAt: ago(20 + i),
+    })),
+    ...extraPrivateRooms.map((r, i) => ({
+      ...r, type: "private" as const, ownerId: alice.id, createdAt: ago(20 + i),
+    })),
   ];
 
   const insertedExtraRooms = await db

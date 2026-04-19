@@ -1089,8 +1089,15 @@ function InvitationBell({
           ) : (
             <div className="space-y-2 pr-2">
               {invitations.map((inv) => (
-                <div
+                <form
                   key={inv.id}
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    respond.mutate({
+                      invitationId: inv.id,
+                      action: "accept",
+                    });
+                  }}
                   className="flex items-center gap-3 rounded-md border bg-card p-3"
                 >
                   <Lock className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -1104,20 +1111,16 @@ function InvitationBell({
                   </div>
                   <div className="flex gap-1.5 shrink-0">
                     <Button
+                      type="submit"
                       size="sm"
                       variant="default"
                       className="text-[12px] h-7 px-2"
                       disabled={respond.isPending}
-                      onClick={() =>
-                        respond.mutate({
-                          invitationId: inv.id,
-                          action: "accept",
-                        })
-                      }
                     >
                       Accept
                     </Button>
                     <Button
+                      type="button"
                       size="sm"
                       variant="ghost"
                       className="text-[12px] h-7 px-2"
@@ -1132,7 +1135,7 @@ function InvitationBell({
                       Decline
                     </Button>
                   </div>
-                </div>
+                </form>
               ))}
             </div>
           )}
@@ -1276,8 +1279,15 @@ function FriendRequestsBell({
           ) : (
             <div className="space-y-2 pr-2">
               {requests.map((request) => (
-                <div
+                <form
                   key={request.id}
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    respond.mutate({
+                      requestId: request.id,
+                      action: "accept",
+                    });
+                  }}
                   className="rounded-md border bg-card p-3 space-y-2"
                 >
                   <div className="flex items-center gap-3">
@@ -1291,19 +1301,15 @@ function FriendRequestsBell({
                     </div>
                     <div className="flex gap-1.5 shrink-0">
                       <Button
+                        type="submit"
                         size="sm"
                         className="h-7 px-2 text-[12px]"
                         disabled={respond.isPending}
-                        onClick={() =>
-                          respond.mutate({
-                            requestId: request.id,
-                            action: "accept",
-                          })
-                        }
                       >
                         Accept
                       </Button>
                       <Button
+                        type="button"
                         size="sm"
                         variant="ghost"
                         className="h-7 px-2 text-[12px]"
@@ -1324,7 +1330,7 @@ function FriendRequestsBell({
                       &ldquo;{request.message}&rdquo;
                     </p>
                   )}
-                </div>
+                </form>
               ))}
             </div>
           )}
@@ -2488,9 +2494,7 @@ function RoomsSidebar({
                     !!friend.directRoomId &&
                     activeRoomId === friend.directRoomId
                   }
-                  unread={
-                    getUnreadCount(friend.directRoomId) || friend.unreadCount
-                  }
+                  unread={getUnreadCount(friend.directRoomId)}
                   onMouseEnter={
                     friend.directRoomId
                       ? () => prefetchRoom(friend.directRoomId!)
