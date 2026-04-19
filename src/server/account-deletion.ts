@@ -1,7 +1,7 @@
 import { unlink } from "node:fs/promises";
 import { join } from "node:path";
 
-import { eq, inArray, or } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
 
 import { db } from "../db";
 import { friendRequests, friendships, userBans } from "../db/schema/friends";
@@ -17,7 +17,14 @@ async function deleteFiles(storageKeys: string[]) {
   );
 }
 
-export async function deleteUserAccount(userId: string) {
+export async function deleteUserAccount(userId: string): Promise<{
+  ownedRoomIds: string[];
+  dmRoomIds: string[];
+  memberRoomIds: string[];
+  friendUserIds: string[];
+}> {
+  const empty = { ownedRoomIds: [], dmRoomIds: [], memberRoomIds: [], friendUserIds: [] };
+
   const [user] = await db
     .select({ email: users.email })
     .from(users)
@@ -25,7 +32,7 @@ export async function deleteUserAccount(userId: string) {
     .limit(1);
 
   if (!user) {
-    return;
+    return empty;
   }
 
   const ownedRooms = await db
@@ -35,15 +42,52 @@ export async function deleteUserAccount(userId: string) {
 
   const ownedRoomIds = ownedRooms.map((room) => room.id);
 
+  // Rooms the user is a member of (but doesn't own) — for member-removed broadcasts.
+  const memberRows = await db
+    .select({ roomId: roomMembers.roomId })
+    .from(roomMembers)
+    .where(eq(roomMembers.userId, userId));
+  // Will be populated after dmRoomIds is known.
+  let memberRoomIds: string[] = [];
+
+
+  // Friends to notify.
+  const friendshipRows = await db
+    .select({
+      userOneId: friendships.userOneId,
+      userTwoId: friendships.userTwoId,
+    })
+    .from(friendships)
+    .where(or(eq(friendships.userOneId, userId), eq(friendships.userTwoId, userId)));
+  const friendUserIds = friendshipRows.map((f) =>
+    f.userOneId === userId ? f.userTwoId : f.userOneId,
+  );
+
+  // DM rooms the user participates in — these should also be deleted.
+  const dmRoomRows = await db
+    .select({ roomId: roomMembers.roomId })
+    .from(roomMembers)
+    .innerJoin(rooms, and(eq(rooms.id, roomMembers.roomId), eq(rooms.type, "direct")))
+    .where(eq(roomMembers.userId, userId));
+  const dmRoomIds = dmRoomRows.map((r) => r.roomId);
+
+  // Now populate memberRoomIds, excluding owned and DM rooms (those get fully deleted).
+  memberRoomIds = memberRows
+    .map((r) => r.roomId)
+    .filter((id) => !ownedRoomIds.includes(id) && !dmRoomIds.includes(id));
+
+  // Combine owned + DM rooms for attachment cleanup.
+  const allDeletedRoomIds = [...ownedRoomIds, ...dmRoomIds];
+
   const attachmentRows =
-    ownedRoomIds.length > 0
+    allDeletedRoomIds.length > 0
       ? await db
           .select({
             id: attachments.id,
             storageKey: attachments.storageKey,
           })
           .from(attachments)
-          .where(inArray(attachments.roomId, ownedRoomIds))
+          .where(inArray(attachments.roomId, allDeletedRoomIds))
       : [];
 
   await db.transaction(async (tx) => {
@@ -64,6 +108,24 @@ export async function deleteUserAccount(userId: string) {
       await tx.delete(roomInvitations).where(inArray(roomInvitations.roomId, ownedRoomIds));
       await tx.delete(roomBans).where(inArray(roomBans.roomId, ownedRoomIds));
       await tx.delete(rooms).where(inArray(rooms.id, ownedRoomIds));
+    }
+
+    // Delete DM rooms (and their messages/members/attachments).
+    if (dmRoomIds.length > 0) {
+      const dmMessageIds = await tx
+        .select({ id: messages.id })
+        .from(messages)
+        .where(inArray(messages.roomId, dmRoomIds));
+
+      const dmMsgIds = dmMessageIds.map((m) => m.id);
+
+      if (dmMsgIds.length > 0) {
+        await tx.delete(attachments).where(inArray(attachments.messageId, dmMsgIds));
+        await tx.delete(messages).where(inArray(messages.id, dmMsgIds));
+      }
+
+      await tx.delete(roomMembers).where(inArray(roomMembers.roomId, dmRoomIds));
+      await tx.delete(rooms).where(inArray(rooms.id, dmRoomIds));
     }
 
     await tx
@@ -103,4 +165,6 @@ export async function deleteUserAccount(userId: string) {
   });
 
   await deleteFiles(attachmentRows.map((attachment) => attachment.storageKey));
+
+  return { ownedRoomIds, dmRoomIds, memberRoomIds, friendUserIds };
 }

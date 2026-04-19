@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 
 import { SESSION_COOKIE_NAME } from "@/lib/auth-constants";
 
-const PUBLIC_ROUTES = ["/login", "/register"];
+const PUBLIC_ROUTES = ["/login", "/register", "/forgot-password", "/reset-password"];
 const PROTECTED_PREFIX = "/chat";
 
 export function middleware(request: NextRequest) {
@@ -30,5 +30,7 @@ export const config = {
     "/chat/:path*",
     "/login",
     "/register",
+    "/forgot-password",
+    "/reset-password",
   ],
 };

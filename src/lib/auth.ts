@@ -6,6 +6,19 @@ import { db } from "../db";
 import { SESSION_COOKIE_NAME } from "./auth-constants";
 import * as schema from "../db/schema";
 
+// Mock SMTP: store reset URLs in memory so the UI can display them
+const resetUrlStore = new Map<string, { url: string; expires: number }>();
+
+export function consumeResetUrl(email: string): string | null {
+  const entry = resetUrlStore.get(email);
+  if (!entry || Date.now() > entry.expires) {
+    resetUrlStore.delete(email);
+    return null;
+  }
+  resetUrlStore.delete(email);
+  return entry.url;
+}
+
 export const auth = betterAuth({
   secret: process.env.BETTER_AUTH_SECRET ?? "development-secret-change-me",
   baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:3000",
@@ -24,6 +37,13 @@ export const auth = betterAuth({
   },
   emailAndPassword: {
     enabled: true,
+    sendResetPassword: async ({ user, url }) => {
+      console.log(`[MOCK SMTP] Password reset for ${user.email}: ${url}`);
+      resetUrlStore.set(user.email, {
+        url,
+        expires: Date.now() + 5 * 60 * 1000,
+      });
+    },
   },
   session: {
     modelName: "sessions",

@@ -95,7 +95,7 @@ function LoginForm() {
               />
             </div>
 
-            <div className="flex items-center">
+            <div className="flex items-center justify-between">
               <label
                 htmlFor="remember"
                 className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none"
@@ -109,6 +109,12 @@ function LoginForm() {
                 />
                 Keep me signed in
               </label>
+              <Link
+                href="/forgot-password"
+                className="text-sm text-info hover:underline underline-offset-4"
+              >
+                Forgot password?
+              </Link>
             </div>
 
             <Button type="submit" className="w-full" disabled={isPending}>
