@@ -16,10 +16,10 @@
 - Cross-model review on security-critical paths (auth, access control,
   file permissions): Codex writes, Claude Code reviews
 - Spec-driven development: SPEC.md as authoritative source, AGENTS.md
-  as behavioral guardrails, DEMO.md as prioritization anchor
+  as behavioral guardrails, docs/demo.md as prioritization anchor
 - TDD on permissions and auth: red tests written first, agent implements
   to green
-- Progress journaling: progress.md updated at every session clear
+- Progress journaling: docs/progress.md updated at every session clear
 
 ## Timeline
 

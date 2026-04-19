@@ -11,10 +11,10 @@ with no Earth connection).
 - SPEC.md: authoritative triage and technical decisions. Follow this.
 - docs/original-task.md: original hackathon task for reference.
   If SPEC.md and original-task.md conflict, SPEC.md wins.
-- DEMO.md: the demo flow. Every feature on this path is must-ship.
-- DESIGN.md: design language and component conventions.
-- AI_WORKFLOW.md: log of tools and orchestration patterns used.
-- progress.md: current status. Update after every task completion.
+- docs/demo.md: the demo flow. Every feature on this path is must-ship.
+- docs/design.md: design language and component conventions.
+- docs/ai-workflow.md: log of tools and orchestration patterns used.
+- docs/progress.md: current status. Update after every task completion.
 
 ## Stack (FROZEN — do not change)
 
@@ -111,7 +111,7 @@ with no Earth connection).
 
 - Design tokens live in src/app/globals.css (CSS variables) and are wired
   through tailwind.config.ts. All shadcn components inherit them.
-- Read DESIGN.md before building any UI component.
+- Read docs/design.md before building any UI component.
 - Match pixel references in design/screens/ for major screens.
 - Do NOT copy components from design/claude-design-export.html directly.
   Rebuild using shadcn + Tailwind, matching the visual style.

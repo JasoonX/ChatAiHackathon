@@ -12,3 +12,9 @@
 - Fixed federation routing by adding Docker network aliases for `conference.a.chat.local` and `conference.b.chat.local`, then verified cross-server MUC delivery:
   `alice@a.chat.local` joined `general@conference.b.chat.local` and `bob@b.chat.local` received `Federation test from server A`.
 - Added a sidebar link to `/chat/admin/jabber` so the XMPP dashboard is reachable directly from the chat UI.
+- Cleaned up the documentation structure:
+  moved workflow/demo/design/progress docs under `docs/`, added `docs/README.md`, and removed the low-value root `BUGS.md`.
+
+## Deferred / Accepted Tradeoffs
+
+- Room members panel and modal do not implement pagination. The spec allows up to 1000 members per room, but at hackathon scale this is unlikely to be hit. Search in the modal partially mitigates this. Adding cursor pagination across members, contacts, admins, and banned lists was deferred as low demo value and should be revisited if the app is productionized.

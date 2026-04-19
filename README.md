@@ -73,4 +73,5 @@ pnpm dev
 
 - `docker compose up` is the intended judge flow.
 - The `seed` service is part of Compose and runs automatically before the app service starts.
-- The project workflow log is in [AI_WORKFLOW.md](./AI_WORKFLOW.md).
+- Core docs live under [`docs/`](./docs/README.md):
+  spec references, demo flow, design notes, workflow log, plans, and progress.

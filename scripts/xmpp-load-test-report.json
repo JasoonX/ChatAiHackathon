@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-04-19T11:51:46.862Z",
+  "timestamp": "2026-04-19T11:58:52.724Z",
   "config": {
     "botsPerServer": 50,
     "testDurationMs": 30000,
@@ -8,17 +8,17 @@
   "serverA": {
     "connected": 50,
     "total": 50,
-    "totalSent": 930,
-    "totalReceived": 44505,
-    "avgConnectTimeMs": 261,
+    "totalSent": 932,
+    "totalReceived": 44566,
+    "avgConnectTimeMs": 263,
     "errors": 0
   },
   "serverB": {
     "connected": 50,
     "total": 50,
-    "totalSent": 930,
-    "totalReceived": 44503,
-    "avgConnectTimeMs": 260,
+    "totalSent": 932,
+    "totalReceived": 44568,
+    "avgConnectTimeMs": 261,
     "errors": 0
   }
 }
