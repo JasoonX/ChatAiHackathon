@@ -43,136 +43,140 @@ export default function JabberAdminPage() {
   }, []);
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Jabber / XMPP Dashboard
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Connection status and bridge statistics
-        </p>
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div className="mx-auto w-full max-w-3xl space-y-6 p-4 sm:p-6">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Jabber / XMPP Dashboard
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Connection status and bridge statistics
+          </p>
+        </div>
+
+        {error && (
+          <Card>
+            <CardContent className="py-4">
+              <p className="text-sm text-destructive">{error}</p>
+            </CardContent>
+          </Card>
+        )}
+
+        {stats && (
+          <>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Prosody Server</CardTitle>
+                <CardDescription>XMPP component connection</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-sm text-muted-foreground">Status</span>
+                  <Badge variant={stats.connected ? "success" : "destructive"}>
+                    {stats.connected ? "Connected" : "Disconnected"}
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-sm text-muted-foreground">
+                    XMPP Domain
+                  </span>
+                  <span className="text-right text-sm font-mono break-all">
+                    {stats.domain}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-sm text-muted-foreground">
+                    Component JID
+                  </span>
+                  <span className="text-right text-sm font-mono break-all">
+                    {stats.componentDomain}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Bridge Traffic</CardTitle>
+                <CardDescription>
+                  Message forwarding between web app and XMPP
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <StatBox
+                    label="Web &rarr; XMPP"
+                    value={stats.messagesForwardedToXmpp}
+                    sub={
+                      stats.lastForwardedAt
+                        ? `Last: ${formatTime(stats.lastForwardedAt)}`
+                        : "No messages yet"
+                    }
+                  />
+                  <StatBox
+                    label="XMPP &rarr; Web"
+                    value={stats.messagesReceivedFromXmpp}
+                    sub={
+                      stats.lastReceivedAt
+                        ? `Last: ${formatTime(stats.lastReceivedAt)}`
+                        : "No messages yet"
+                    }
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Errors</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-sm text-muted-foreground">
+                    Total errors
+                  </span>
+                  <Badge variant={stats.errors > 0 ? "warning" : "secondary"}>
+                    {stats.errors}
+                  </Badge>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Federation</CardTitle>
+                <CardDescription>
+                  Server-to-server (S2S) connections
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-sm text-muted-foreground">
+                    Server A domain
+                  </span>
+                  <span className="text-right text-sm font-mono break-all">
+                    a.chat.local
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-sm text-muted-foreground">
+                    Server B domain
+                  </span>
+                  <span className="text-right text-sm font-mono break-all">
+                    b.chat.local
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  S2S federation is enabled between both Prosody instances.
+                  Federation traffic flows directly between Prosody servers via
+                  port 5269. Use the load test script to verify cross-server
+                  messaging.
+                </p>
+              </CardContent>
+            </Card>
+          </>
+        )}
       </div>
-
-      {error && (
-        <Card>
-          <CardContent className="py-4">
-            <p className="text-sm text-destructive">{error}</p>
-          </CardContent>
-        </Card>
-      )}
-
-      {stats && (
-        <>
-          {/* Connection Status */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Prosody Server</CardTitle>
-              <CardDescription>XMPP component connection</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Status</span>
-                <Badge variant={stats.connected ? "success" : "destructive"}>
-                  {stats.connected ? "Connected" : "Disconnected"}
-                </Badge>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">
-                  XMPP Domain
-                </span>
-                <span className="text-sm font-mono">{stats.domain}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">
-                  Component JID
-                </span>
-                <span className="text-sm font-mono">
-                  {stats.componentDomain}
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Bridge Statistics */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Bridge Traffic</CardTitle>
-              <CardDescription>
-                Message forwarding between web app and XMPP
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-4">
-                <StatBox
-                  label="Web &rarr; XMPP"
-                  value={stats.messagesForwardedToXmpp}
-                  sub={
-                    stats.lastForwardedAt
-                      ? `Last: ${formatTime(stats.lastForwardedAt)}`
-                      : "No messages yet"
-                  }
-                />
-                <StatBox
-                  label="XMPP &rarr; Web"
-                  value={stats.messagesReceivedFromXmpp}
-                  sub={
-                    stats.lastReceivedAt
-                      ? `Last: ${formatTime(stats.lastReceivedAt)}`
-                      : "No messages yet"
-                  }
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Errors */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Errors</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">
-                  Total errors
-                </span>
-                <Badge variant={stats.errors > 0 ? "warning" : "secondary"}>
-                  {stats.errors}
-                </Badge>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Federation Info */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Federation</CardTitle>
-              <CardDescription>
-                Server-to-server (S2S) connections
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">
-                  Server A domain
-                </span>
-                <span className="text-sm font-mono">a.chat.local</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">
-                  Server B domain
-                </span>
-                <span className="text-sm font-mono">b.chat.local</span>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                S2S federation is enabled between both Prosody instances.
-                Federation traffic flows directly between Prosody servers via
-                port 5269. Use the load test script to verify cross-server
-                messaging.
-              </p>
-            </CardContent>
-          </Card>
-        </>
-      )}
     </div>
   );
 }
